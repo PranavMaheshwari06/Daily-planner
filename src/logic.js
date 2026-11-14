@@ -4,8 +4,8 @@
 (function (g) {
   'use strict';
 
-  var DAY_START = 480;   // 08:00
-  var DAY_END = 1500;    // 01:00 the next morning
+  var DAY_START = 0;     // 00:00
+  var DAY_END = 1440;    // 24:00. A block never crosses midnight.
 
   var TAGS = [
     { id: 'work',     name: 'Work',     fill: '#0F2A4D', text: '#A9D0FF', box: '#0A84FF', chk: '#FFFFFF' },
@@ -23,7 +23,7 @@
   function addDays(s, n) { var d = parse(s); d.setDate(d.getDate() + n); return dk(d); }
   function wd(s) { return (parse(s).getDay() + 6) % 7; }            // Monday = 0
   function weekStart(s) { return addDays(s, -wd(s)); }
-  function fmtMin(m) { return pad(Math.floor(m / 60) % 24) + ':' + pad(m % 60); }
+  function fmtMin(m) { return m === 1440 ? '24:00' : pad(Math.floor(m / 60) % 24) + ':' + pad(m % 60); }
   function uid() { return Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-3); }
   function endAt(date, endMin) { var d = parse(date); d.setHours(0, endMin, 0, 0); return d; }
   function tagById(id) { for (var i = 0; i < TAGS.length; i++) if (TAGS[i].id === id) return TAGS[i]; return TAGS[TAGS.length - 1]; }
@@ -202,7 +202,7 @@
     var title = String(e.title || '').trim();
     var start = +e.start, end = +e.end;
     if (!title) return { error: 'Give the block a title.' };
-    if (!(start >= DAY_START && start < DAY_END) || !(end > DAY_START && end <= DAY_END)) return { error: 'Times must be between 08:00 and 01:00.' };
+    if (!(start >= DAY_START && start < DAY_END) || !(end > DAY_START && end <= DAY_END)) return { error: 'Times must be between 00:00 and 24:00.' };
     if (end <= start) return { error: 'End must be after start.' };
     return {
       title: title, start: start, end: end,
@@ -317,8 +317,11 @@
     Object.keys(s.marks || {}).forEach(function (k) { if (s.marks[k] === 'd' || s.marks[k] === 'x') out.marks[k] = s.marks[k]; });
     out.blocks = s.blocks.filter(function (b) { return b && b.id && (b.rep === 'once' || b.rep === 'weekly'); })
       .map(function (b) {
+        // Blocks saved before the 24-hour day could run past midnight (up to 01:00). Cut them at 24:00.
+        var end = Math.min(+b.end, DAY_END), start = Math.max(+b.start, DAY_START);
+        if (start >= end) start = Math.max(DAY_START, end - 15);
         var o = { id: String(b.id), title: String(b.title || 'Untitled'), tag: tagById(b.tag).id,
-                  start: +b.start, end: +b.end, habit: b.habit || null, notes: String(b.notes || ''), rep: b.rep };
+                  start: start, end: end, habit: b.habit || null, notes: String(b.notes || ''), rep: b.rep };
         if (b.rep === 'once') o.date = String(b.date);
         else { o.startDate = String(b.startDate); o.endDate = b.endDate || null; o.days = (b.days || []).map(Number); o.ex = (b.ex || []).slice(); }
         return o;

@@ -23,7 +23,7 @@ function boot(opts) {
       const RD = w.Date;
       class FD extends RD { constructor(...a) { if (a.length === 0) super(FIXED + (w.__off || 0)); else super(...a); } static now() { return FIXED + (w.__off || 0); } }
       w.Date = FD;
-      w.scrollTo = () => {};
+      w.scrollTo = (x, y) => { (w.__scrolls = w.__scrolls || []).push(y); };
       if (opts.width) Object.defineProperty(w, 'innerWidth', { value: opts.width, configurable: true });
       if (opts.claude) w.claude = opts.claude;
     } });
@@ -43,8 +43,41 @@ function setSel(w, el, v) { el.value = v; el.dispatchEvent(new w.Event('change',
     assert.strictEqual(errors.length, 0, errors.join('|'));
     assert.ok($(w, '.grid')); assert.match($(w, '.ttl').textContent, /Friday, 13 November 2026/);
     assert.match($(w, '.dayh').textContent, /Week 46/);
-    assert.strictEqual($$(w, '.hr').length, 17);
+    assert.strictEqual($$(w, '.hr').length, 24);
     assert.ok($(w, '.nowl b').textContent === '14:20');
+  });
+
+  await t('24-hour grid: 00:00 to 23:00 rows, 1248px tall, opens near the current time', () => {
+    const labels = $$(w, '.hrl').map(e => e.textContent);
+    assert.strictEqual($$(w, '.hr')[0].dataset.m, '0'); assert.strictEqual($$(w, '.hr')[23].dataset.m, '1380');
+    assert.strictEqual(labels[0], '00:00'); assert.strictEqual(labels[6], '06:00');
+    assert.strictEqual($(w, '.grid').style.height, '1248px');
+    assert.ok(Math.abs(w.__scrolls[0] - (860 * 52 / 60 - 90)) < 1, 'scrolled to ' + w.__scrolls[0]);   // 14:20 minus some context
+    click(w, $(w, '.hr[data-m="1380"]'));
+    const st = $(w, '.quick select[data-f="q-start"]').options, en = $(w, '.quick select[data-f="q-end"]').options;
+    assert.strictEqual(st[0].textContent, '00:00'); assert.strictEqual(st[st.length - 1].textContent, '23:45');
+    assert.strictEqual(en[0].textContent, '00:15'); assert.strictEqual(en[en.length - 1].textContent, '24:00');
+    assert.strictEqual($(w, '.quick select[data-f="q-end"]').value, '1440');   // 23:00 + 1h stops at midnight
+    w.document.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    assert.ok(!$(w, '.quick'));
+  });
+
+  await t('early block at 00:00 can be added and shows 00:00 – 01:00', () => {
+    click(w, $(w, '.hr[data-m="0"]')); typeIn(w, $(w, '.qin'), 'Night owl');
+    $(w, '.qin').dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    const tile = $$(w, '.tile').find(e => /Night owl/.test(e.textContent));
+    assert.ok(tile); assert.match(tile.textContent, /00:00 – 01:00/);
+    assert.strictEqual(tile.style.top, '2px');
+    click(w, tile.querySelector('.tbody')); click(w, $(w, '[data-a="d-del"]')); click(w, $(w, '[data-a="d-del-one"]'));
+    assert.ok(!$$(w, '.tile').some(e => /Night owl/.test(e.textContent)));
+  });
+
+  await t('other days open at 06:00', () => {
+    click(w, $$(w, '.cd').find(b => b.dataset.d === '2026-11-17'));
+    assert.match($(w, '.ttl').textContent, /Tuesday, 17 November/);
+    assert.ok(Math.abs(w.__scrolls[w.__scrolls.length - 1] - (360 * 52 / 60 - 8)) < 1, 'scrolled to ' + w.__scrolls[w.__scrolls.length - 1]);
+    click(w, $(w, '[data-a="today"]'));
+    assert.ok(Math.abs(w.__scrolls[w.__scrolls.length - 1] - (860 * 52 / 60 - 90)) < 1);
   });
 
   await t('quick add via hour slot + Enter', async () => {

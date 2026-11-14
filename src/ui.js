@@ -338,14 +338,14 @@
   function gridHtml() {
     var occs = visibleOccs(sel), i, rows = '';
     var statuses = occs.map(function (o) { return L.occStatus(S, o, now); });
-    for (i = 8; i <= 24; i++) {
+    for (i = 0; i < 24; i++) {
       var lab = L.fmtMin(i * 60);
       var nm = Math.round((now - L.parse(sel)) / 60000), near = Math.abs(nm - i * 60) < 24;
       rows += '<button class="hr" data-a="slot" data-m="' + i * 60 + '" aria-label="Add a block at ' + lab + '"><span class="hrl">' + (near ? '' : lab) + '</span><span class="hrc"><span class="ghost">' + ic('plus', 14) + ' Add at ' + lab + '</span></span></button>';
     }
     var laid = L.layoutDay(occs.map(function (o, k) { o._s = statuses[k]; return o; }));
     var tiles = laid.map(function (o) {
-      var t = L.tagById(o.tag), top = (o.start - 480) * HOUR_PX / 60 + 2, hgt = (o.end - o.start) * HOUR_PX / 60 - 4;
+      var t = L.tagById(o.tag), top = (o.start - L.DAY_START) * HOUR_PX / 60 + 2, hgt = (o.end - o.start) * HOUR_PX / 60 - 4;
       var short = o.end - o.start <= 60, s = o._s, hb = o.habit ? habitById(o.habit) : null, pill = '';
       if (hb) pill = s === 'd' ? '<span class="pill on">' + ic('check', 11) + ' ' + (phone ? 'Logged' : 'Logged to ' + esc(hb.name)) + '</span>' : s === 'x' ? '<span class="pill off">Not logged</span>' : '<span class="pill dash">' + (phone ? 'Auto-logs' : 'Auto-logs to ' + esc(hb.name)) + '</span>';
       var pw = 100 / o.cols, lf = o.col * pw, key = o.key;
@@ -357,15 +357,15 @@
 
     var q = '';
     if (quick) {
-      var qt = (quick.start - 480) * HOUR_PX / 60 + 2, maxTop = 17 * HOUR_PX - 160;
+      var qt = (quick.start - L.DAY_START) * HOUR_PX / 60 + 2, maxTop = 24 * HOUR_PX - 160;
       if (qt > maxTop) qt = maxTop;
       q = '<div class="quick" style="top:' + qt + 'px" role="group" aria-label="New block"><input class="qin" data-f="q-title" value="' + esc(quick.title) + '" placeholder="What are you doing?" aria-label="Title" autocomplete="off" enterkeyhint="done"><div class="chips">' +
         L.TAGS.map(function (t) { return '<button class="chip' + (quick.tag === t.id ? ' on' : '') + '" style="' + tagStyle(t) + '" data-a="q-tag" data-t="' + t.id + '" aria-pressed="' + (quick.tag === t.id) + '"><i></i>' + t.name + '</button>'; }).join('') +
         '</div><div class="qrow"><span>' + timeSelect('q-start', quick.start, 'start') + ' – ' + timeSelect('q-end', quick.end, 'end') + '</span>' + (phone ? '' : '<span class="hint">Enter to add · Esc to cancel</span>') + '<span><button class="btn sm" data-a="q-more">Details</button> <button class="btn sm pri" data-a="q-add">Add</button></span></div></div>';
     }
     var nl = '', mins = Math.round((now - L.parse(sel)) / 60000);
-    if (mins >= 480 && mins <= 1500) nl = '<div class="nowl" style="top:' + ((mins - 480) * HOUR_PX / 60) + 'px"><b>' + L.fmtMin(mins) + '</b><s></s><u></u></div>';
-    return '<div class="grid">' + rows + '<div class="ov">' + tiles + q + '</div>' + nl + '</div>';
+    if (mins >= L.DAY_START && mins < L.DAY_END) nl = '<div class="nowl" style="top:' + ((mins - L.DAY_START) * HOUR_PX / 60) + 'px"><b>' + L.fmtMin(mins) + '</b><s></s><u></u></div>';
+    return '<div class="grid" style="height:' + (24 * HOUR_PX) + 'px">' + rows + '<div class="ov">' + tiles + q + '</div>' + nl + '</div>';
   }
 
   function renderDay() {
@@ -375,7 +375,7 @@
   }
 
   function timeSelect(f, val, kind, cls) {
-    var o = '', from = kind === 'start' ? 480 : 495, to = kind === 'start' ? 1485 : 1500, seen = false, m;
+    var o = '', from = kind === 'start' ? L.DAY_START : L.DAY_START + 15, to = kind === 'start' ? L.DAY_END - 15 : L.DAY_END, seen = false, m;
     for (m = from; m <= to; m += 15) { if (m === val) seen = true; o += '<option value="' + m + '"' + (m === val ? ' selected' : '') + '>' + L.fmtMin(m) + '</option>'; }
     if (!seen) o = '<option value="' + val + '" selected>' + L.fmtMin(val) + '</option>' + o;
     return '<select class="' + (cls || 'qtime') + '" data-f="' + f + '" aria-label="' + (kind === 'start' ? 'Start' : 'End') + '">' + o + '</select>';
@@ -480,10 +480,20 @@
   /* ================= actions ================= */
 
   function commit() { Store.schedule(); render(); }
+  /* The day grid is 24 hours tall. Open it near the current time, or at 06:00 on other days. */
+  function scrollToDay() {
+    try {
+      var g = document.querySelector('.grid'); if (!g || view !== 'day') return;
+      var hd = document.querySelector('.ph,.top'), hh = hd ? hd.offsetHeight : 0;
+      var mins = Math.round((now - L.parse(sel)) / 60000), isNow = sel === L.dk(now) && mins >= L.DAY_START && mins < L.DAY_END;
+      var y = g.getBoundingClientRect().top + window.scrollY + (isNow ? mins : 360) * HOUR_PX / 60 - hh - (isNow ? 90 : 8);
+      window.scrollTo(0, Math.max(0, y));
+    } catch (e) { }
+  }
   function syncCal() { var d = L.parse(sel); cal = { y: d.getFullYear(), m: d.getMonth() }; }
   function defaultStart() {
     var m = Math.floor((now - L.parse(sel)) / 60000);
-    if (sel === L.dk(now) && m >= 480 && m < 1440) return Math.min(Math.ceil((m + 1) / 60) * 60, 1440);
+    if (sel === L.dk(now) && m >= L.DAY_START && m < L.DAY_END) return Math.min(Math.ceil((m + 1) / 60) * 60, L.DAY_END - 60);
     return 540;
   }
 
@@ -496,20 +506,20 @@
     render(); openDlg('[data-f=title]');
   }
   function openNew(init) {
-    var s = init && init.start != null ? init.start : defaultStart(), e = init && init.end != null ? init.end : Math.min(s + 60, 1500);
+    var s = init && init.start != null ? init.start : defaultStart(), e = init && init.end != null ? init.end : Math.min(s + 60, L.DAY_END);
     var tag = (init && init.tag) || 'personal';
     dlg = { id: null, occDate: null, date: sel, title: (init && init.title) || '', tag: tag, start: s, end: e, habit: S.tagHabit[tag] || null, notes: '', repeat: 'once', series: false, err: '', confirm: false };
     quick = null; render(); openDlg('[data-f=title]');
   }
 
   var actions = {
-    view: function (el) { view = el.dataset.v; quick = null; render(); },
-    today: function () { now = new Date(); sel = L.dk(now); syncCal(); hv = { y: now.getFullYear(), m: now.getMonth() }; quick = null; render(); },
+    view: function (el) { view = el.dataset.v; quick = null; render(); if (view === 'day') scrollToDay(); },
+    today: function () { now = new Date(); sel = L.dk(now); syncCal(); hv = { y: now.getFullYear(), m: now.getMonth() }; quick = null; render(); scrollToDay(); },
     prev: function () { if (view === 'day') { sel = L.addDays(sel, -1); syncCal(); quick = null; } else { hv.m--; if (hv.m < 0) { hv.m = 11; hv.y--; } } render(); },
     next: function () { if (view === 'day') { sel = L.addDays(sel, 1); syncCal(); quick = null; } else { hv.m++; if (hv.m > 11) { hv.m = 0; hv.y++; } } render(); },
     'cal-prev': function () { cal.m--; if (cal.m < 0) { cal.m = 11; cal.y--; } render(); },
     'cal-next': function () { cal.m++; if (cal.m > 11) { cal.m = 0; cal.y++; } render(); },
-    pick: function (el) { sel = el.dataset.d; syncCal(); quick = null; calOpen = false; if (view !== 'day') view = 'day'; render(); },
+    pick: function (el) { sel = el.dataset.d; syncCal(); quick = null; calOpen = false; if (view !== 'day') view = 'day'; render(); scrollToDay(); },
     'cal-toggle': function () { calOpen = !calOpen; syncCal(); render(); },
     tag: function (el) {
       var t = el.dataset.t, i = S.hiddenTags.indexOf(t);
@@ -520,8 +530,8 @@
     occ: function (el) { now = new Date(); var o = L.findOcc(S, el.dataset.k); if (o) { L.toggleOcc(S, o, now); commit(); } },
     open: function (el) { openEdit(el.dataset.k); },
     slot: function (el) {
-      var s = +el.dataset.m; if (s >= 1500) s = 1440;
-      quick = { start: s, end: Math.min(s + 60, 1500), tag: lastTag, title: '', focus: true }; render();
+      var s = +el.dataset.m;
+      quick = { start: s, end: Math.min(s + 60, L.DAY_END), tag: lastTag, title: '', focus: true }; render();
     },
     new: function () { openNew(); },
     'q-tag': function (el) { quick.tag = el.dataset.t; quick.focus = true; render(); },
@@ -608,10 +618,10 @@
     var f = e.target.dataset && e.target.dataset.f, v = e.target.value;
     if (e.target.id === 'imp') { importFile(e.target.files && e.target.files[0]); return; }
     if (!f) return;
-    if (f === 'q-start' && quick) { quick.start = +v; if (quick.end <= quick.start) quick.end = Math.min(quick.start + 60, 1500); quick.focus = false; render(); }
-    else if (f === 'q-end' && quick) { quick.end = +v; if (quick.end <= quick.start) quick.start = Math.max(quick.end - 60, 480); quick.focus = false; render(); }
-    else if (f === 'd-start' && dlg) { dlg.start = +v; if (dlg.end <= dlg.start) dlg.end = Math.min(dlg.start + 60, 1500); renderDlg(); }
-    else if (f === 'd-end' && dlg) { dlg.end = +v; if (dlg.end <= dlg.start) dlg.start = Math.max(dlg.end - 60, 480); renderDlg(); }
+    if (f === 'q-start' && quick) { quick.start = +v; if (quick.end <= quick.start) quick.end = Math.min(quick.start + 60, L.DAY_END); quick.focus = false; render(); }
+    else if (f === 'q-end' && quick) { quick.end = +v; if (quick.end <= quick.start) quick.start = Math.max(quick.end - 60, L.DAY_START); quick.focus = false; render(); }
+    else if (f === 'd-start' && dlg) { dlg.start = +v; if (dlg.end <= dlg.start) dlg.end = Math.min(dlg.start + 60, L.DAY_END); renderDlg(); }
+    else if (f === 'd-end' && dlg) { dlg.end = +v; if (dlg.end <= dlg.start) dlg.start = Math.max(dlg.end - 60, L.DAY_START); renderDlg(); }
     else if (f === 'date' && dlg) { if (/^\d{4}-\d{2}-\d{2}$/.test(v)) { dlg.date = v; renderDlg(); } }
     else if (f === 'd-habit' && dlg) { dlg.habit = v; renderDlg(); }
     else if (f === 'hname') { render(); }
@@ -679,11 +689,7 @@
   window.addEventListener('pagehide', function () { Store.flushNow(); });
 
   Store.init().then(function () {
-    ready = true; render();
-    try {
-      var n = document.querySelector('.nowl');
-      if (n && view === 'day') window.scrollTo(0, Math.max(0, n.getBoundingClientRect().top + window.scrollY - 220));
-    } catch (e) { }
+    ready = true; render(); scrollToDay();
   });
 
   window.__planner = { get S() { return S; }, Store: Store };

@@ -161,16 +161,35 @@ t('validation', () => {
   const s = L.newState();
   assert.ok(L.saveBlock(s, { id: null, date: '2026-11-13', title: '  ', tag: 'gym', start: 600, end: 660, repeat: 'once' }).error);
   assert.ok(L.saveBlock(s, { id: null, date: '2026-11-13', title: 'x', tag: 'gym', start: 660, end: 600, repeat: 'once' }).error);
-  assert.ok(L.saveBlock(s, { id: null, date: '2026-11-13', title: 'x', tag: 'gym', start: 420, end: 600, repeat: 'once' }).error);
-  assert.ok(L.saveBlock(s, { id: null, date: '2026-11-13', title: 'late', tag: 'gym', start: 1440, end: 1500, repeat: 'once' }).ok);
+  assert.ok(L.saveBlock(s, { id: null, date: '2026-11-13', title: 'x', tag: 'gym', start: -15, end: 600, repeat: 'once' }).error);
+  assert.ok(L.saveBlock(s, { id: null, date: '2026-11-13', title: 'x', tag: 'gym', start: 1380, end: 1500, repeat: 'once' }).error);   // may not cross midnight
+  assert.ok(L.saveBlock(s, { id: null, date: '2026-11-13', title: 'x', tag: 'gym', start: 1440, end: 1500, repeat: 'once' }).error);
+  assert.match(L.saveBlock(s, { id: null, date: '2026-11-13', title: 'x', tag: 'gym', start: 1380, end: 1500, repeat: 'once' }).error, /00:00 and 24:00/);
 });
 
-t('a block ending 01:00 logs itself only after 01:00 next day', () => {
+t('full 24-hour day: 00:00 start and 24:00 end are valid', () => {
   const s = L.newState();
-  L.saveBlock(s, { id: null, date: '2026-11-13', title: 'Late', tag: 'personal', start: 1380, end: 1500, repeat: 'once' });
+  assert.strictEqual(L.DAY_START, 0); assert.strictEqual(L.DAY_END, 1440);
+  assert.ok(L.saveBlock(s, { id: null, date: '2026-11-13', title: 'Night shift', tag: 'work', start: 0, end: 360, repeat: 'once' }).ok);
+  assert.ok(L.saveBlock(s, { id: null, date: '2026-11-13', title: 'Late', tag: 'personal', start: 1380, end: 1440, repeat: 'once' }).ok);
+  assert.strictEqual(L.fmtMin(0), '00:00'); assert.strictEqual(L.fmtMin(1380), '23:00'); assert.strictEqual(L.fmtMin(1440), '24:00');
+});
+
+t('old blocks that ran past midnight are cut at 24:00 on import', () => {
+  const s = L.newState();
+  s.blocks.push({ id: 'a', title: 'Late', tag: 'personal', start: 1380, end: 1500, habit: null, notes: '', rep: 'once', date: '2026-11-13' });
+  s.blocks.push({ id: 'b', title: 'After midnight', tag: 'personal', start: 1440, end: 1500, habit: null, notes: '', rep: 'once', date: '2026-11-13' });
+  const n = L.normalize(JSON.parse(JSON.stringify(s)));
+  assert.strictEqual(JSON.stringify([n.blocks[0].start, n.blocks[0].end]), JSON.stringify([1380, 1440]));
+  assert.ok(n.blocks[1].start < n.blocks[1].end && n.blocks[1].end === 1440);
+});
+
+t('a block ending 24:00 logs itself at midnight', () => {
+  const s = L.newState();
+  L.saveBlock(s, { id: null, date: '2026-11-13', title: 'Late', tag: 'personal', start: 1380, end: 1440, repeat: 'once' });
   const o = L.occurrencesOn(s, '2026-11-13')[0];
-  assert.strictEqual(L.occStatus(s, o, at('2026-11-14', 0, 30)), 'p');
-  assert.strictEqual(L.occStatus(s, o, at('2026-11-14', 1, 0)), 'd');
+  assert.strictEqual(L.occStatus(s, o, at('2026-11-13', 23, 59)), 'p');
+  assert.strictEqual(L.occStatus(s, o, at('2026-11-14', 0, 0)), 'd');
 });
 
 t('overlap layout', () => {
