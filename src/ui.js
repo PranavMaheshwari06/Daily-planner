@@ -270,7 +270,7 @@
       head = '<header class="ph"><div class="ph-top"><span style="display:flex;align-items:center;gap:4px"><button class="ib s" data-a="prev" aria-label="Previous month">' + ic('l') + '</button><span class="mbtn" style="cursor:default">' + MONTHS[hv.m] + ' ' + hv.y + '</span><button class="ib s" data-a="next" aria-label="Next month">' + ic('r') + '</button></span>' +
         '<span style="display:flex;align-items:center;gap:12px"><span class="sync" id="sync" role="status">' + esc(Store.label()) + '</span><button class="mbtn" data-a="hm-open">Edit</button></span></div>' +
         '<div class="ph-title"><div><div class="d1">Habits</div><div class="d2">This week. Done boxes log themselves; tap one to flip it.</div></div></div><div style="height:10px"></div></header>';
-      main = '<main class="pmain"><div class="phabits">' + S.habits.map(habitCard).join('') + (S.habits.length ? '' : '<div class="note">No habits yet. Tap Edit to add one.</div>') + '</div></main>';
+      main = '<main class="pmain"><div class="phabits">' + monthCard() + S.habits.map(habitCard).join('') + (S.habits.length ? '' : '<div class="note">No habits yet. Tap Edit to add one.</div>') + '</div></main>';
     }
     var tabs = [['day', 'Day', 'day'], ['habits', 'Habits', 'habit'], ['data', 'Data', 'data']].map(function (t) {
       var on = view === t[0];
@@ -283,6 +283,28 @@
     var p = { day: 'M3.5 5.5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-7a2 2 0 0 1-2-2zM3.5 7.5h11M6.5 2.5v2M11.5 2.5v2', habit: 'M3.5 3.5h4.5v4.5H3.5zM10 3.5h4.5v4.5H10zM3.5 10H8v4.5H3.5zM11 12l1.5 1.5L15 10.5', data: 'M9 3c3 0 5.5.9 5.5 2s-2.5 2-5.5 2-5.5-.9-5.5-2S6 3 9 3zM3.5 5v8c0 1.1 2.5 2 5.5 2s5.5-.9 5.5-2V5M3.5 9c0 1.1 2.5 2 5.5 2s5.5-.9 5.5-2' }[n];
     return '<svg width="24" height="24" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="' + p + '"></path></svg>';
   }
+  /* Monthly progress, in numbers. Habits tab only (phone: above the cards, desktop: above the grid). */
+  function monthCard() {
+    var ms = L.monthSummary(S, hv.y, hv.m, now), today = L.dk(now);
+    var title = MONTHS[hv.m] + (hv.y !== now.getFullYear() ? ' ' + hv.y : '');
+    var big = ms.planned
+      ? '<div class="mbig"><b>' + ms.pct + '<small>%</small></b><span>' + ms.done + ' of ' + ms.planned + ' planned habit-days</span></div>'
+      : '<div class="mbig"><b>–</b><span>Nothing planned this month</span></div>';
+    function stTile(label, r) {
+      return '<div class="mst"><span class="k">' + label + '</span> <span class="v"><b>' + r.count + '</b> ' + (r.count === 1 ? 'day' : 'days') + (r.count ? ' <em>' + esc(r.name) + '</em>' : '') + '</span></div>';
+    }
+    var weeks = ms.weeks.filter(function (w) { return w.planned > 0; }).map(function (w) {
+      var cur = w.start <= today && today <= w.end;
+      return '<div class="mw' + (cur ? ' cur' : '') + '" role="group" aria-label="Week ' + w.week + ': ' + w.done + ' of ' + w.planned + ' planned habit-days done"><span class="wl">W' + w.week + '</span><span class="wbar" aria-hidden="true"><i style="width:' + Math.round(w.done / w.planned * 100) + '%"></i></span><span class="wn">' + w.done + '/' + w.planned + '</span></div>';
+    }).join('');
+    var chips = ms.habits.map(function (h) {
+      return '<button class="mchip" style="--c:' + h.color + '" data-a="chip" data-h="' + esc(h.id) + '" aria-label="' + esc(h.name) + ': ' + h.done + ' of ' + h.planned + ' this month. Go to its card"><i></i>' + esc(h.name) + ' <b>' + (h.planned ? h.done + '/' + h.planned : '–') + '</b></button>';
+    }).join('');
+    return '<section class="card mcard" aria-label="' + esc(title) + ' progress"><div class="mh"><span class="h3">' + esc(title) + '</span></div><div class="mbody">' +
+      '<div class="mleft">' + big + '<div class="msts">' + stTile('Best streak now', ms.bestStreak) + stTile('Longest this month', ms.longestStreak) + '</div></div>' +
+      '<div class="mright">' + (weeks ? '<div class="mweeks">' + weeks + '</div>' : '') + (chips ? '<div class="mchips">' + chips + '</div>' : '') + '</div></div></section>';
+  }
+
   function habitCard(h) {
     var today = L.dk(now), ws = L.weekStart(today), st = L.monthStats(S, h.id, hv.y, hv.m, now), sk = L.streak(S, h.id, now), wk = L.weekStats(S, h.id, ws, now);
     var pct = st.planned ? Math.round(st.done / st.planned * 100) : 0, chk = L.habitChk(h.color), cells = '';
@@ -290,7 +312,7 @@
       var D = L.addDays(ws, i), s = L.habitDay(S, h.id, D, now), fut = D > today;
       cells += '<button data-a="hab" data-h="' + h.id + '" data-d="' + D + '"' + (fut ? ' disabled' : '') + ' aria-label="' + esc(h.name + ', ' + shortDate(D) + ': ' + stateLabel(s)) + '"><em' + (D === today ? ' class="t"' : '') + '>' + 'MTWTFSS'.charAt(i) + '</em><small' + (D === today ? ' class="t"' : '') + '>' + L.parse(D).getDate() + '</small><span class="wc ' + s + '">' + (s === 'done' ? ic('check', 16) : s === 'missed' ? ic('x', 14) : s === 'upcoming' ? '<i></i>' : '') + '</span></button>';
     }
-    return '<section class="hcard" style="--c:' + h.color + ';--k:' + chk + '" aria-label="' + esc(h.name) + '"><div class="r1"><div><div class="nm"><span class="sw"></span>' + esc(h.name) + '</div><div class="wkc">' + (wk.planned ? '<b>' + wk.done + '</b> of ' + wk.planned + ' this week' : 'Nothing planned this week') + '</div></div><div class="muted small"><b style="font-size:20px;color:#fff;letter-spacing:-.01em">' + sk + '</b> in a row</div></div><div class="wk">' + cells + '</div><div class="bar" style="margin-top:14px"><i style="width:' + pct + '%"></i></div><div class="small muted" style="margin-top:6px">' + (st.planned ? st.done + ' of ' + st.planned + ' planned days this month' : 'Nothing planned yet this month') + '</div></section>';
+    return '<section class="hcard" id="hc-' + esc(h.id) + '" style="--c:' + h.color + ';--k:' + chk + '" aria-label="' + esc(h.name) + '"><div class="r1"><div><div class="nm"><span class="sw"></span>' + esc(h.name) + '</div><div class="wkc">' + (wk.planned ? '<b>' + wk.done + '</b> of ' + wk.planned + ' this week' : 'Nothing planned this week') + '</div></div><div class="muted small"><b style="font-size:20px;color:#fff;letter-spacing:-.01em">' + sk + '</b> in a row</div></div><div class="wk">' + cells + '</div><div class="bar" style="margin-top:14px"><i style="width:' + pct + '%"></i></div><div class="small muted" style="margin-top:6px">' + (st.planned ? st.done + ' of ' + st.planned + ' planned days this month' : 'Nothing planned yet this month') + '</div></section>';
   }
 
   /* ---------- shared pieces ---------- */
@@ -383,7 +405,7 @@
     var y = hv.y, mo = hv.m, n = new Date(y, mo + 1, 0).getDate(), today = L.dk(now), d, i;
     var cards = S.habits.map(function (h) {
       var st = L.monthStats(S, h.id, y, mo, now), sk = L.streak(S, h.id, now), pct = st.planned ? Math.round(st.done / st.planned * 100) : 0;
-      return '<div class="card sc" style="--c:' + h.color + '"><div class="nm"><span class="sw"></span>' + esc(h.name) + '</div><div class="big"><b>' + sk + '</b><span class="muted">in a row</span></div><div class="bar"><i style="width:' + pct + '%"></i></div><div class="small muted">' + (st.planned ? st.done + ' of ' + st.planned + ' planned days this month' : 'Nothing planned yet this month') + '</div></div>';
+      return '<div class="card sc" id="hc-' + esc(h.id) + '" style="--c:' + h.color + '"><div class="nm"><span class="sw"></span>' + esc(h.name) + '</div><div class="big"><b>' + sk + '</b><span class="muted">in a row</span></div><div class="bar"><i style="width:' + pct + '%"></i></div><div class="small muted">' + (st.planned ? st.done + ' of ' + st.planned + ' planned days this month' : 'Nothing planned yet this month') + '</div></div>';
     }).join('');
     var head = '<div class="hrow hd" style="--n:' + n + '"><span></span>';
     for (i = 1; i <= n; i++) {
@@ -400,7 +422,7 @@
       }
       return '<div class="hrow b" style="--n:' + n + '"><span class="hl"><span class="sw" style="--c:' + h.color + '"></span><span class="hn">' + esc(h.name) + '</span></span>' + cells + '<span class="tot" title="This week: ' + wk.done + ' of ' + wk.planned + '">' + (wk.planned ? wk.done + '/' + wk.planned : '–') + '</span><span class="tot">' + st.done + '/' + st.planned + '</span></div>';
     }).join('');
-    return '<div class="hv"><div class="cards">' + cards + '</div><div class="card pad tw"><div class="tin">' + head + body + '</div></div>' +
+    return '<div class="hv">' + monthCard() + '<div class="cards">' + cards + '</div><div class="card pad tw"><div class="tin">' + head + body + '</div></div>' +
       '<div class="legend"><span><span class="lgd" style="background:#30D158;color:#06240F">' + ic('check', 11) + '</span>Done, logged automatically</span><span><span class="lgd" style="background:#2C2C2E;color:#AEAEB2">' + ic('x', 10) + '</span>Not done, you marked it</span><span><span class="lgd" style="border:2px dashed #409CFF"></span>Open today</span><span>Click any past circle to flip it.</span></div></div>';
   }
 
@@ -549,7 +571,7 @@
   }
 
   var actions = {
-    view: function (el) { view = el.dataset.v; quick = null; render(); if (view === 'day') scrollToDay(); },
+    view: function (el) { view = el.dataset.v; quick = null; render(); if (view === 'day') scrollToDay(); else { try { window.scrollTo(0, 0); } catch (e) { } } },
     today: function () { now = new Date(); sel = L.dk(now); syncCal(); hv = { y: now.getFullYear(), m: now.getMonth() }; quick = null; render(); scrollToDay(); },
     prev: function () { if (view === 'day') { sel = L.addDays(sel, -1); syncCal(); quick = null; } else { hv.m--; if (hv.m < 0) { hv.m = 11; hv.y--; } } render(); },
     next: function () { if (view === 'day') { sel = L.addDays(sel, 1); syncCal(); quick = null; } else { hv.m++; if (hv.m > 11) { hv.m = 0; hv.y++; } } render(); },
@@ -565,6 +587,12 @@
     hab: function (el) { now = new Date(); if (L.toggleHabit(S, el.dataset.h, el.dataset.d, now)) commit(); },
     occ: function (el) { now = new Date(); var o = L.findOcc(S, el.dataset.k); if (o) { L.toggleOcc(S, o, now); commit(); } },
     open: function (el) { openEdit(el.dataset.k); },
+    chip: function (el) {
+      var t = document.getElementById('hc-' + el.dataset.h); if (!t) return;
+      var calm = false; try { calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { }
+      if (t.scrollIntoView) t.scrollIntoView({ behavior: calm ? 'auto' : 'smooth', block: 'center' });
+      t.classList.remove('flash'); void t.offsetWidth; t.classList.add('flash');
+    },
     slot: function (el) {
       var s = +el.dataset.m;
       quick = { start: s, end: Math.min(s + 60, L.DAY_END), tag: L.tagById(S, lastTag).id, title: '', focus: true }; render();

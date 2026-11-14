@@ -480,6 +480,73 @@ const cloudFor = (store, uid) => ({ use: async n => n === 'db' ? mkDb(store) : n
     d.window.close();
   });
 
+  const cardText = (p) => {
+    const c = $(p, '.mcard');
+    return { title: c.querySelector('.mh .h3').textContent, pct: c.querySelector('.mbig b').textContent, sub: c.querySelector('.mbig span').textContent,
+      weeks: [...c.querySelectorAll('.mw')].map(r => r.querySelector('.wl').textContent + ' ' + r.querySelector('.wn').textContent),
+      chips: [...c.querySelectorAll('.mchip')].map(x => x.textContent.replace(/\s+/g, ' ').trim()),
+      streaks: [...c.querySelectorAll('.mst')].map(x => x.textContent.replace(/\s+/g, ' ').trim()) };
+  };
+  const monthNumbers = { title: 'November', pct: '95%', sub: '20 of 21 planned habit-days',
+    weeks: ['W45 11/11', 'W46 9/11', 'W47 0/11', 'W48 0/11', 'W49 0/2'],
+    chips: ['Gym 9/10', 'Study 10/10', 'German 1/1'],
+    streaks: ['Best streak now 10 days Study', 'Longest this month 10 days Study'] };
+
+  await t('phone Habits: monthly progress card above the habit cards', async () => {
+    const d = boot({ width: 390, claude: cloudFor(fixtureStore('m1'), 'm1') }); await wait(150); const p = d.window;
+    assert.ok(!$(p, '.mcard'), 'no monthly numbers on the Day view'); assert.ok($(p, '.ringw'));
+    click(p, $$(p, '.tabbar button')[1]);
+    assert.strictEqual(p.__scrolls[p.__scrolls.length - 1], 0, 'Habits opens at the top, not where the Day grid was scrolled to');
+    assert.ok($(p, '.phabits > .mcard:first-child'));
+    assert.strictEqual($$(p, '.phabits > *')[1].className, 'hcard');
+    assert.deepStrictEqual(cardText(p), monthNumbers);
+    assert.ok($(p, '.mw.cur .wl').textContent === 'W46');                                      // this week is marked
+    assert.strictEqual($(p, '.mw .wbar i').style.width, '100%'); assert.strictEqual($$(p, '.mw .wbar i')[1].style.width, '82%');
+    // tapping a chip scrolls to that habit's card
+    p.Element.prototype.scrollIntoView = function () { (p.__sivs = p.__sivs || []).push(this.id); };
+    click(p, $$(p, '.mchip')[1]);
+    assert.deepStrictEqual(p.__sivs, ['hc-h-study']);
+    assert.ok(p.document.getElementById('hc-h-study').classList.contains('flash'));
+    assert.strictEqual(p.document.getElementById('hc-h-study').querySelector('.nm').textContent, 'Study');
+    // live: flip Gym Wed 11 back to done, the numbers follow
+    click(p, $$(p, '.hcard')[0].querySelectorAll('.wk button')[2]);
+    const n = cardText(p); assert.strictEqual(n.pct, '100%'); assert.strictEqual(n.sub, '21 of 21 planned habit-days');
+    assert.ok(n.chips[0] === 'Gym 10/10' && n.weeks[1] === 'W46 10/11');
+    d.window.close();
+  });
+
+  await t('phone Habits: card follows the month and handles an empty month', async () => {
+    const d = boot({ width: 390, claude: cloudFor(fixtureStore('m2'), 'm2') }); await wait(150); const p = d.window;
+    click(p, $$(p, '.tabbar button')[1]);
+    click(p, $(p, '.ph [data-a="prev"]'));
+    const c = cardText(p);
+    assert.strictEqual(c.title, 'October'); assert.strictEqual(c.pct, '–'); assert.strictEqual(c.sub, 'Nothing planned this month');
+    assert.deepStrictEqual(c.weeks, []); assert.deepStrictEqual(c.chips, ['Gym –', 'Study –', 'German –']);
+    click(p, $(p, '.ph [data-a="next"]')); click(p, $(p, '.ph [data-a="next"]'));
+    assert.strictEqual(cardText(p).title, 'December'); assert.strictEqual(cardText(p).pct, '–');
+    d.window.close();
+    const e = boot({ width: 390 }); await wait(100);                                           // no habits planned at all
+    click(e.window, $$(e.window, '.tabbar button')[1]);
+    assert.strictEqual(cardText(e.window).sub, 'Nothing planned this month'); assert.match(cardText(e.window).streaks[0], /0 days$/);
+    e.window.close();
+  });
+
+  await t('desktop Habits: the same card sits above the habit grid; Day view has none', async () => {
+    const d = boot({ claude: cloudFor(fixtureStore('m3'), 'm3') }); await wait(150); const p = d.window;
+    assert.ok(!$(p, '.mcard'));
+    click(p, $(p, '[data-a="view"][data-v="habits"]'));
+    assert.strictEqual($(p, '.hv').firstElementChild.className, 'card mcard');
+    assert.ok($(p, '.mcard').compareDocumentPosition($(p, '.tw')) & p.Node.DOCUMENT_POSITION_FOLLOWING);
+    assert.deepStrictEqual(cardText(p), monthNumbers);
+    p.Element.prototype.scrollIntoView = function () { (p.__sivs = p.__sivs || []).push(this.id); };
+    click(p, $$(p, '.mchip')[0]); assert.deepStrictEqual(p.__sivs, ['hc-h-gym']);
+    // desktop week column and the card agree on the current week
+    const wkCol = $$(p, '.hrow.b').map(r => r.querySelectorAll('.tot')[0].textContent);
+    assert.deepStrictEqual(wkCol, ['4/5', '5/5', '0/1']);
+    click(p, $(p, '[data-a="view"][data-v="day"]')); assert.ok(!$(p, '.mcard'));
+    d.window.close();
+  });
+
   console.log('\n' + pass + ' passed; page errors:', errors.length, errors.slice(0, 3));
   process.exit(process.exitCode || 0);
 })();

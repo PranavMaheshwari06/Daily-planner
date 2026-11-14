@@ -251,6 +251,51 @@
     return rangeStats(state, H, ws, addDays(ws, 6), now);
   }
 
+  /* Longest run of done days inside one month, up to today. Same rules as streak(): days with nothing planned
+     are skipped, a missed day ends the run. */
+  function longestRun(state, H, y, m, now) {
+    var today = dk(now), days = new Date(y, m + 1, 0).getDate(), run = 0, best = 0;
+    for (var i = 1; i <= days; i++) {
+      var D = y + '-' + pad(m + 1) + '-' + pad(i);
+      if (D > today) break;
+      var s = habitDay(state, H, D, now);
+      if (s === 'done') { run++; if (run > best) best = run; }
+      else if (s === 'missed') run = 0;
+    }
+    return best;
+  }
+
+  /* Everything the monthly progress card shows. m is 0-11.
+     done / missed / planned count habit-days that are decided (up to today), summed over all habits; pct = done / planned.
+     weeks: one row per Monday-Sunday week that touches the month, clipped to the month, with the same
+     done / missed / upcoming / planned numbers as weekStats (planned includes days still to come).
+     habits: per habit done / missed / planned for the month so far.
+     bestStreak: the longest running streak right now. longestStreak: the longest run inside this month. */
+  function monthSummary(state, y, m, now) {
+    var first = y + '-' + pad(m + 1) + '-01', last = dk(new Date(y, m + 1, 0));
+    var out = { year: y, month: m, done: 0, missed: 0, planned: 0, pct: null, weeks: [], habits: [],
+                bestStreak: { count: 0, id: null, name: '' }, longestStreak: { count: 0, id: null, name: '' } };
+    state.habits.forEach(function (h) {
+      var st = monthStats(state, h.id, y, m, now), cur = streak(state, h.id, now), run = longestRun(state, h.id, y, m, now);
+      out.habits.push({ id: h.id, name: h.name, color: h.color, done: st.done, missed: st.missed, planned: st.planned });
+      out.done += st.done; out.missed += st.missed;
+      if (cur > out.bestStreak.count) out.bestStreak = { count: cur, id: h.id, name: h.name };
+      if (run > out.longestStreak.count) out.longestStreak = { count: run, id: h.id, name: h.name };
+    });
+    out.planned = out.done + out.missed;
+    out.pct = out.planned ? Math.round(out.done / out.planned * 100) : null;
+    for (var ws = weekStart(first); ws <= last; ws = addDays(ws, 7)) {
+      var from = ws < first ? first : ws, to = addDays(ws, 6) > last ? last : addDays(ws, 6);
+      var w = { week: isoWeek(ws), start: from, end: to, done: 0, missed: 0, upcoming: 0, planned: 0 };
+      state.habits.forEach(function (h) {
+        var r = rangeStats(state, h.id, from, to, now);
+        w.done += r.done; w.missed += r.missed; w.upcoming += r.upcoming; w.planned += r.planned;
+      });
+      out.weeks.push(w);
+    }
+    return out;
+  }
+
   /* ---------- editing ---------- */
 
   function rekeyMarks(state, fn) {
@@ -446,7 +491,7 @@
     addTag: addTag, updateTag: updateTag, deleteTag: deleteTag,
     newState: newState, occurrencesOn: occurrencesOn, findOcc: findOcc, layoutDay: layoutDay,
     occStatus: occStatus, toggleOcc: toggleOcc, habitDay: habitDay, toggleHabit: toggleHabit,
-    streak: streak, monthStats: monthStats, rangeStats: rangeStats, weekStats: weekStats, saveBlock: saveBlock, deleteBlock: deleteBlock,
+    streak: streak, monthStats: monthStats, rangeStats: rangeStats, weekStats: weekStats, monthSummary: monthSummary, saveBlock: saveBlock, deleteBlock: deleteBlock,
     deleteHabit: deleteHabit, normalize: normalize, earliest: earliest
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

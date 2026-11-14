@@ -1,6 +1,6 @@
 # Planner v3 plan (next batch)
 
-Status: planned, not built. Read `docs/PLAN.md` and `CLAUDE.md` first. Build, test (`npm test`), commit as the owner, then publish.
+Status: items 1 to 4 built and tested; item 5 is still a list of candidates (confirm before building). Read `docs/PLAN.md` and `CLAUDE.md` first. Build, test (`npm test`), commit as the owner, then publish.
 
 ## 1. Habit cards: dates and weekly counters (phone Habits tab)
 - Under each weekday letter show the date number, very small (10px, grey; today in blue). Order per column: letter, date, circle.

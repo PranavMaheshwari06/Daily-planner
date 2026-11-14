@@ -162,6 +162,39 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .legend span{display:flex;align-items:center;gap:8px}
 .lgd{width:18px;height:18px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;color:#fff}
 
+/* monthly progress card */
+.mcard{padding:16px 18px 14px}
+.mh{margin-bottom:12px}
+.mh .h3{font-size:17px}
+.mbody{display:flex;flex-wrap:wrap;gap:18px 32px}
+.mleft{flex:0 1 260px;min-width:0;display:flex;flex-direction:column;gap:14px}
+.mright{flex:1 1 300px;min-width:0;display:flex;flex-direction:column;gap:14px}
+.mbig{display:flex;flex-direction:column;gap:4px}
+.mbig b{font-size:44px;line-height:1;font-weight:700;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.mbig b small{font-size:22px;font-weight:600;color:var(--t2);margin-left:2px;letter-spacing:0}
+.mbig span{font-size:13px;color:var(--t2)}
+.msts{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.mst{background:var(--elev);border-radius:12px;padding:8px 12px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.mst .k{font-size:11px;font-weight:600;color:var(--t2)}
+.mst .v{font-size:13px;color:var(--t2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mst .v b{font-size:20px;font-weight:600;color:var(--text);letter-spacing:-.01em}
+.mst .v em{font-style:normal}
+.mweeks{display:flex;flex-direction:column;gap:8px}
+.mw{display:grid;grid-template-columns:36px 1fr 48px;align-items:center;gap:10px;font-size:13px;font-variant-numeric:tabular-nums}
+.mw .wl{color:var(--t2);font-weight:600}
+.mw.cur .wl{color:var(--blue)}
+.mw .wn{text-align:right;font-weight:600}
+.wbar{height:5px;border-radius:3px;background:var(--elev);overflow:hidden}
+.wbar i{display:block;height:100%;border-radius:3px;background:var(--blue);transition:width .4s var(--ease)}
+.mchips{display:flex;flex-wrap:wrap;gap:6px}
+.mchip{min-height:36px;padding:0 14px;border-radius:18px;border:0;background:var(--elev);font-size:13px;font-weight:500;display:inline-flex;align-items:center;gap:8px;font-variant-numeric:tabular-nums}
+.mchip:hover{background:var(--elev2)}
+.mchip i{width:8px;height:8px;border-radius:50%;background:var(--c);flex:none}
+.mchip b{font-weight:600;color:var(--t2)}
+.flash{animation:flash 1.2s var(--ease)}
+@keyframes flash{0%{box-shadow:0 0 0 2px var(--blue)}100%{box-shadow:0 0 0 2px transparent}}
+@media (max-width:760px){.mchip{min-height:44px}}
+
 /* phone habit cards */
 .hcard{background:var(--card);border-radius:20px;padding:16px 16px 14px}
 .hcard .r1{display:flex;align-items:center;justify-content:space-between}

@@ -232,6 +232,7 @@ t('tracker click and block box always agree', () => {
   assert.strictEqual(L.habitDay(s, 'h-gym', '2026-11-13', NOW), 'done');
 });
 
+const plain = x => JSON.parse(JSON.stringify(x));      // objects made inside the vm context have another prototype
 const wk = (s, h, d, now) => { const r = L.weekStats(s, h, d, now || NOW); return [r.done, r.missed, r.planned, r.upcoming]; };
 
 t('weekStats: done, missed, planned and upcoming over Mon-Sun', () => {
@@ -276,6 +277,77 @@ t('weekStats: a manual mark on a day without a block counts as planned', () => {
   assert.deepStrictEqual(wk(s, 'h-sleep', '2026-11-09'), [1, 0, 1, 0]);
   L.toggleHabit(s, 'h-sleep', '2026-11-12', NOW);                                                  // flipped to missed
   assert.deepStrictEqual(wk(s, 'h-sleep', '2026-11-09'), [0, 1, 1, 0]);
+});
+
+/* Gym and Study every weekday from Mon 2 Nov, German on Fridays from 6 Nov, Gym skipped on Wed 11. Clock: Fri 13 Nov 14:20. */
+function monthState() {
+  const s = L.newState();
+  L.saveBlock(s, { id: null, date: '2026-11-02', title: 'Gym session', tag: 'gym', start: 480, end: 540, habit: 'h-gym', repeat: 'weekdays' });
+  L.saveBlock(s, { id: null, date: '2026-11-02', title: 'Study', tag: 'study', start: 540, end: 720, habit: 'h-study', repeat: 'weekdays' });
+  L.saveBlock(s, { id: null, date: '2026-11-06', title: 'German B1 practice', tag: 'german', start: 900, end: 960, habit: 'h-german', repeat: 'weekly' });
+  L.toggleOcc(s, L.occurrencesOn(s, '2026-11-11').filter(o => o.title === 'Gym session')[0], NOW);
+  return s;
+}
+
+t('monthSummary: completion, planned habit-days, per-habit counts', () => {
+  const m = L.monthSummary(monthState(), 2026, 10, NOW);
+  assert.strictEqual(JSON.stringify([m.done, m.missed, m.planned, m.pct]), JSON.stringify([20, 1, 21, 95]));   // 9+10+1 done, Gym Wed 11 missed
+  assert.strictEqual(m.planned, m.done + m.missed);
+  const h = Object.fromEntries(m.habits.map(x => [x.id, [x.done, x.planned]]));
+  assert.deepStrictEqual(h['h-gym'], [9, 10]); assert.deepStrictEqual(h['h-study'], [10, 10]); assert.deepStrictEqual(h['h-german'], [1, 1]);
+  assert.deepStrictEqual(h['h-sleep'], [0, 0]);
+  assert.strictEqual(m.habits.length, 5);
+});
+
+t('monthSummary: week rows are clipped to the month and match weekStats', () => {
+  const s = monthState(), m = L.monthSummary(s, 2026, 10, NOW);
+  assert.deepStrictEqual(plain(m.weeks.map(w => [w.week, w.start, w.end, w.done, w.missed, w.upcoming, w.planned])), [
+    [44, '2026-11-01', '2026-11-01', 0, 0, 0, 0],      // Sun 1 Nov only, nothing planned
+    [45, '2026-11-02', '2026-11-08', 11, 0, 0, 11],
+    [46, '2026-11-09', '2026-11-15', 9, 1, 1, 11],     // Gym 4 + Study 5 + German still to come
+    [47, '2026-11-16', '2026-11-22', 0, 0, 11, 11],
+    [48, '2026-11-23', '2026-11-29', 0, 0, 11, 11],
+    [49, '2026-11-30', '2026-11-30', 0, 0, 2, 2]]);    // Mon 30 Nov only
+  const sum = k => m.weeks.reduce((a, w) => a + w[k], 0);
+  assert.strictEqual(sum('done'), m.done); assert.strictEqual(sum('missed'), m.missed);
+  m.weeks.forEach(w => assert.strictEqual(w.planned, w.done + w.missed + w.upcoming));
+  // the full-week rows are exactly the weekly counters of every habit added up
+  const w46 = s.habits.reduce((a, h) => { const r = L.weekStats(s, h.id, '2026-11-09', NOW); return [a[0] + r.done, a[1] + r.planned]; }, [0, 0]);
+  assert.deepStrictEqual(w46, [m.weeks[2].done, m.weeks[2].planned]);
+});
+
+t('monthSummary: best current streak and longest streak this month', () => {
+  const m = L.monthSummary(monthState(), 2026, 10, NOW);
+  assert.deepStrictEqual(plain(m.bestStreak), { count: 10, id: 'h-study', name: 'Study' });         // Study done every weekday since 2 Nov
+  assert.deepStrictEqual(plain(m.longestStreak), { count: 10, id: 'h-study', name: 'Study' });
+  const s = monthState();
+  L.toggleOcc(s, L.occurrencesOn(s, '2026-11-12').filter(o => o.title === 'Study')[0], NOW);  // Study skipped Thu 12
+  const n = L.monthSummary(s, 2026, 10, NOW);
+  assert.deepStrictEqual(plain(n.longestStreak), { count: 8, id: 'h-study', name: 'Study' });         // Study 2-6 and 9-11 beats Gym 2-6 and 9-10 (Wed 11 missed)
+  assert.deepStrictEqual(plain(n.bestStreak), { count: 2, id: 'h-gym', name: 'Gym' });               // Gym 12, 13 vs Study 13 only
+});
+
+t('monthSummary: months with nothing decided', () => {
+  const s = monthState();
+  const oct = L.monthSummary(s, 2026, 9, NOW);                                               // before anything was planned
+  assert.strictEqual(JSON.stringify([oct.done, oct.missed, oct.planned, oct.pct]), JSON.stringify([0, 0, 0, null]));
+  assert.ok(oct.weeks.every(w => w.planned === 0));
+  assert.strictEqual(oct.longestStreak.count, 0);
+  const dec = L.monthSummary(s, 2026, 11, NOW);                                              // future: planned days are all upcoming
+  assert.strictEqual(dec.planned, 0); assert.strictEqual(dec.pct, null);
+  assert.ok(dec.weeks.some(w => w.upcoming > 0));
+  const empty = L.monthSummary(L.newState(), 2026, 10, NOW);
+  assert.strictEqual(empty.planned, 0); assert.strictEqual(empty.bestStreak.count, 0); assert.strictEqual(empty.bestStreak.id, null);
+});
+
+t('monthSummary follows clicks and the clock', () => {
+  const s = monthState();
+  L.toggleHabit(s, 'h-gym', '2026-11-11', NOW);                                              // Gym Wed 11 back to done
+  let m = L.monthSummary(s, 2026, 10, NOW);
+  assert.strictEqual(JSON.stringify([m.done, m.missed, m.planned, m.pct]), JSON.stringify([21, 0, 21, 100]));
+  m = L.monthSummary(s, 2026, 10, at('2026-11-13', 16, 0));                                  // German block ends
+  assert.strictEqual(JSON.stringify([m.done, m.planned]), JSON.stringify([22, 22]));
+  assert.strictEqual(m.weeks[2].upcoming, 0);
 });
 
 t('ISO week numbers', () => {
