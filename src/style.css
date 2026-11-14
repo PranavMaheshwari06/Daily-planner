@@ -140,8 +140,8 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .sc .big b{font-size:30px;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
 .sc .bar{margin:10px 0 8px}
 .tw{overflow-x:auto}
-.tin{min-width:1000px}
-.hrow{display:grid;grid-template-columns:170px repeat(var(--n),minmax(26px,1fr)) 64px;align-items:center}
+.tin{min-width:1060px}
+.hrow{display:grid;grid-template-columns:170px repeat(var(--n),minmax(26px,1fr)) 56px 64px;align-items:center}
 .hrow.hd{align-items:end;padding:8px 0 4px}
 .hrow.b{border-top:1px solid var(--line)}
 .hdc{display:flex;flex-direction:column;align-items:center;gap:2px;font-size:11px;font-weight:600;color:var(--t3)}
@@ -157,6 +157,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .hc.open{border:2px dashed var(--blue)}
 .hc.upcoming i{width:5px;height:5px;border-radius:50%;background:#48484A}
 .tot{text-align:center;font-weight:600;font-size:13px;font-variant-numeric:tabular-nums}
+.hh{text-align:center;line-height:1.25}
 .legend{display:flex;flex-wrap:wrap;align-items:center;gap:10px 22px;padding-top:6px;font-size:12px;color:var(--t2)}
 .legend span{display:flex;align-items:center;gap:8px}
 .lgd{width:18px;height:18px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;color:#fff}
@@ -166,9 +167,14 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .hcard .r1{display:flex;align-items:center;justify-content:space-between}
 .hcard .nm{display:flex;align-items:center;gap:10px;font-size:17px;font-weight:600}
 .hcard .wk{display:flex;justify-content:space-between;margin-top:12px;padding:0 2px}
-.hcard .wk button{background:none;border:0;padding:0;display:flex;flex-direction:column;align-items:center;gap:6px}
+.hcard .wk button{background:none;border:0;padding:0;display:flex;flex-direction:column;align-items:center;gap:2px}
 .hcard .wk em{font-style:normal;font-size:11px;font-weight:600;color:var(--t3)}
 .hcard .wk em.t{color:var(--blue)}
+.hcard .wk small{font-size:10px;line-height:12px;color:var(--t3);font-variant-numeric:tabular-nums}
+.hcard .wk small.t{color:var(--blue)}
+.hcard .wk .wc{margin-top:4px}
+.wkc{font-size:13px;color:var(--t2);margin-top:2px;font-variant-numeric:tabular-nums}
+.wkc b{color:var(--text);font-weight:600}
 .wc{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#262628;color:var(--k,#fff)}
 .wc.done{background:var(--c)}
 .wc.missed{background:var(--elev);color:var(--t2)}

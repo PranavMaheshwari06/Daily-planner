@@ -232,6 +232,57 @@ t('tracker click and block box always agree', () => {
   assert.strictEqual(L.habitDay(s, 'h-gym', '2026-11-13', NOW), 'done');
 });
 
+const wk = (s, h, d, now) => { const r = L.weekStats(s, h, d, now || NOW); return [r.done, r.missed, r.planned, r.upcoming]; };
+
+t('weekStats: done, missed, planned and upcoming over Mon-Sun', () => {
+  const s = base();
+  // week of Mon 9 Nov, now Fri 13 14:20
+  assert.deepStrictEqual(wk(s, 'h-gym', '2026-11-09'), [5, 0, 5, 0]);        // Mon-Fri gym all ended
+  assert.deepStrictEqual(wk(s, 'h-study', '2026-11-09'), [5, 0, 5, 0]);
+  assert.deepStrictEqual(wk(s, 'h-german', '2026-11-09'), [0, 0, 1, 1]);      // Friday 15:00 not ended: planned, still upcoming
+  assert.deepStrictEqual(wk(s, 'h-sleep', '2026-11-09'), [0, 0, 0, 0]);      // nothing planned
+  const r = L.weekStats(s, 'h-german', '2026-11-09', NOW);
+  assert.strictEqual(r.planned, r.done + r.missed + r.upcoming);
+});
+
+t('weekStats: any day of the week gives the same week, and the week before the series is empty', () => {
+  const s = base();
+  ['2026-11-09', '2026-11-11', '2026-11-15'].forEach(d => assert.deepStrictEqual(wk(s, 'h-gym', d), [5, 0, 5, 0]));
+  assert.deepStrictEqual(wk(s, 'h-gym', '2026-10-26'), [0, 0, 0, 0]);        // series starts Mon 2 Nov
+  assert.deepStrictEqual(wk(s, 'h-gym', '2026-11-02'), [5, 0, 5, 0]);
+});
+
+t('weekStats: days still to come count as planned and upcoming', () => {
+  const s = base();
+  assert.deepStrictEqual(wk(s, 'h-gym', '2026-11-16'), [0, 0, 5, 5]);        // next week, nothing happened yet
+  assert.deepStrictEqual(wk(s, 'h-german', '2026-11-16'), [0, 0, 1, 1]);
+});
+
+t('weekStats follows the clock and clicks: block ends, circle flipped, done early', () => {
+  const s = base();
+  assert.deepStrictEqual(wk(s, 'h-german', '2026-11-09', at('2026-11-13', 15, 59)), [0, 0, 1, 1]);
+  assert.deepStrictEqual(wk(s, 'h-german', '2026-11-09', at('2026-11-13', 16, 0)), [1, 0, 1, 0]);   // the moment the block ends
+  L.toggleHabit(s, 'h-gym', '2026-11-13', NOW);                                                    // circle flipped to missed
+  assert.deepStrictEqual(wk(s, 'h-gym', '2026-11-09'), [4, 1, 5, 0]);
+  L.toggleHabit(s, 'h-gym', '2026-11-13', NOW);
+  assert.deepStrictEqual(wk(s, 'h-gym', '2026-11-09'), [5, 0, 5, 0]);
+  L.toggleOcc(s, L.occurrencesOn(s, '2026-11-13')[2], NOW);                                        // German ticked early
+  assert.deepStrictEqual(wk(s, 'h-german', '2026-11-09'), [1, 0, 1, 0]);
+});
+
+t('weekStats: a manual mark on a day without a block counts as planned', () => {
+  const s = base();
+  L.toggleHabit(s, 'h-sleep', '2026-11-12', NOW);
+  assert.deepStrictEqual(wk(s, 'h-sleep', '2026-11-09'), [1, 0, 1, 0]);
+  L.toggleHabit(s, 'h-sleep', '2026-11-12', NOW);                                                  // flipped to missed
+  assert.deepStrictEqual(wk(s, 'h-sleep', '2026-11-09'), [0, 1, 1, 0]);
+});
+
+t('ISO week numbers', () => {
+  assert.strictEqual(L.isoWeek('2026-11-13'), 46); assert.strictEqual(L.isoWeek('2026-11-09'), 46); assert.strictEqual(L.isoWeek('2026-11-15'), 46);
+  assert.strictEqual(L.isoWeek('2026-11-02'), 45); assert.strictEqual(L.isoWeek('2026-01-01'), 1); assert.strictEqual(L.isoWeek('2026-12-31'), 53);
+});
+
 t('tags are data in state; the six starting tags keep their ids', () => {
   const s = L.newState();
   assert.strictEqual(JSON.stringify(s.tags.map(x => x.id)), JSON.stringify(['work', 'study', 'gym', 'german', 'jobs', 'personal']));

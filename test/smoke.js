@@ -33,6 +33,20 @@ const click = (w, el) => el.dispatchEvent(new w.MouseEvent('click', { bubbles: t
 function typeIn(w, el, v) { el.value = v; el.dispatchEvent(new w.Event('input', { bubbles: true })); }
 function setSel(w, el, v) { el.value = v; el.dispatchEvent(new w.Event('change', { bubbles: true })); }
 
+/* Saved planner for Nov 2026 (clock is Fri 13 Nov 14:20): Gym and Study every weekday, German on Fridays from 6 Nov, Gym skipped on Wed 11. */
+function fixtureStore(uid) {
+  const wk = [0, 1, 2, 3, 4], st = {};
+  st['data/users/' + uid + '/core'] = { v: 1, years: ['2026'], tagHabit: {}, hiddenTags: [],
+    habits: [{ id: 'h-gym', name: 'Gym', color: '#30D158' }, { id: 'h-study', name: 'Study', color: '#BF5AF2' }, { id: 'h-german', name: 'German', color: '#FF9F0A' }],
+    blocks: [
+      { id: 'bg', title: 'Gym session', tag: 'gym', start: 480, end: 540, habit: 'h-gym', notes: '', rep: 'weekly', startDate: '2026-11-02', endDate: null, days: wk, ex: [] },
+      { id: 'bs', title: 'Study', tag: 'study', start: 540, end: 720, habit: 'h-study', notes: '', rep: 'weekly', startDate: '2026-11-02', endDate: null, days: wk, ex: [] },
+      { id: 'bd', title: 'German B1 practice', tag: 'german', start: 900, end: 960, habit: 'h-german', notes: '', rep: 'weekly', startDate: '2026-11-06', endDate: null, days: [4], ex: [] }] };
+  st['data/users/' + uid + '/marks-2026'] = { m: { 'b|2026-11-11|bg': 'x' } };
+  return st;
+}
+const cloudFor = (store, uid) => ({ use: async n => n === 'db' ? mkDb(store) : n === 'user' ? { id: async () => uid } : { save: async () => {} } });
+
 (async () => {
   const store = {}; const saves = [];
   const claude = { use: async n => n === 'db' ? mkDb(store) : n === 'user' ? { id: async () => 'u1' } : { save: async o => { saves.push(o); } } };
@@ -420,6 +434,49 @@ function setSel(w, el, v) { el.value = v; el.dispatchEvent(new w.Event('change',
     click(p, $(p, '[data-a="tg-close"]'));
     click(p, $$(p, '.tabbar button')[2]); click(p, $(p, '.dlg [data-a="tg-open"]'));
     assert.match($(p, '.dlg h2').textContent, /Tags/); assert.strictEqual($$(p, '.dlg .hli').length, 6);
+    d.window.close();
+  });
+
+  await t('phone Habits: date under each weekday letter, weekly counter on each card', async () => {
+    const d = boot({ width: 390, claude: cloudFor(fixtureStore('f1'), 'f1') }); await wait(150); const p = d.window;
+    click(p, $$(p, '.tabbar button')[1]);
+    const cards = $$(p, '.hcard'); assert.strictEqual(cards.length, 3);
+    const cols = [...cards[0].querySelectorAll('.wk button')];
+    assert.strictEqual(cols.length, 7);
+    assert.deepStrictEqual([...cols[0].children].map(e => e.tagName + (e.tagName === 'SPAN' ? '.' + e.className.split(' ')[0] : '')), ['EM', 'SMALL', 'SPAN.wc']);   // letter, date, circle
+    assert.strictEqual(cols.map(c => c.querySelector('em').textContent).join(''), 'MTWTFSS');
+    assert.strictEqual(cols.map(c => c.querySelector('small').textContent).join(','), '9,10,11,12,13,14,15');
+    assert.strictEqual(cols[4].querySelector('small').className, 't'); assert.strictEqual(cols[4].querySelector('em').className, 't');   // today, Fri 13
+    assert.ok(cols.every((c, i) => i === 4 || (!c.querySelector('small').className && !c.querySelector('em').className)));
+    assert.ok(cols[2].querySelector('.wc.missed'));
+    assert.deepStrictEqual(cards.map(c => c.querySelector('.wkc').textContent), ['4 of 5 this week', '5 of 5 this week', '0 of 1 this week']);
+    // flip today's German circle: the counter follows at once
+    click(p, cards[2].querySelectorAll('.wk button')[4]);
+    assert.strictEqual($$(p, '.hcard')[2].querySelector('.wkc').textContent, '1 of 1 this week');
+    click(p, $$(p, '.hcard')[2].querySelectorAll('.wk button')[4]);
+    assert.strictEqual($$(p, '.hcard')[2].querySelector('.wkc').textContent, '0 of 1 this week');
+    click(p, $$(p, '.hcard')[0].querySelectorAll('.wk button')[2]);                         // Gym Wed 11 back to done
+    assert.strictEqual($$(p, '.hcard')[0].querySelector('.wkc').textContent, '5 of 5 this week');
+    d.window.close();
+    // the German block ends at 16:00: from then on it counts as done by itself
+    const d2 = boot({ width: 390, claude: cloudFor(fixtureStore('f1b'), 'f1b') }); await wait(150); const q = d2.window;
+    click(q, $$(q, '.tabbar button')[1]); assert.strictEqual($$(q, '.hcard')[2].querySelector('.wkc').textContent, '0 of 1 this week');
+    q.__off = 2 * 3600e3;                                                                    // 16:20
+    click(q, $$(q, '.tabbar button')[0]); click(q, $$(q, '.tabbar button')[1]);
+    assert.strictEqual($$(q, '.hcard')[2].querySelector('.wkc').textContent, '1 of 1 this week');
+    d2.window.close();
+  });
+
+  await t('desktop Habits grid: Week column with done/planned this week', async () => {
+    const d = boot({ claude: cloudFor(fixtureStore('f2'), 'f2') }); await wait(150); const p = d.window;
+    click(p, $(p, '[data-a="view"][data-v="habits"]'));
+    assert.match($(p, '.hrow.hd').textContent, /Week\s*W46/);
+    const col = i => $$(p, '.hrow.b').map(r => r.querySelectorAll('.tot')[i].textContent);
+    assert.deepStrictEqual(col(0), ['4/5', '5/5', '0/1']);       // this week
+    assert.deepStrictEqual(col(1), ['9/10', '10/10', '1/1']);    // this month so far
+    click(p, $(p, '.hrow.b .hc.missed'));                       // Gym Wed 11 back to done
+    assert.deepStrictEqual(col(0), ['5/5', '5/5', '0/1']); assert.deepStrictEqual(col(1), ['10/10', '10/10', '1/1']);
+    assert.strictEqual($$(p, '.hrow.hd .hdc').length, 30);
     d.window.close();
   });
 

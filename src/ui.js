@@ -24,11 +24,6 @@
     var sw = name === 'check' || name === 'x' ? 2.2 : 1.8;
     return '<svg width="' + (size || 14) + '" height="' + (size || 14) + '" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="' + sw + '" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="' + p + '"/></svg>';
   }
-  function isoWeek(s) {
-    var d = L.parse(s); d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7));
-    var w1 = new Date(d.getFullYear(), 0, 4);
-    return 1 + Math.round(((d - w1) / 864e5 - 3 + ((w1.getDay() + 6) % 7)) / 7);
-  }
   function longDate(s) { var d = L.parse(s); return d.getDate() + ' ' + MONTHS[d.getMonth()] + ' ' + d.getFullYear(); }
   function shortDate(s) { var d = L.parse(s); return DAYS[L.wd(s)].slice(0, 3) + ' ' + d.getDate() + ' ' + MONTHS[d.getMonth()].slice(0, 3); }
   function anyDlg() { return dlg || hdlg || ddlg || tdlg; }
@@ -267,7 +262,7 @@
       }).join('') + '<button class="chip ed" data-a="tg-open">Edit tags</button></div>' : '';
       head = '<header class="ph"><div class="ph-top"><button class="mbtn' + (calOpen ? ' open' : '') + '" data-a="cal-toggle" aria-expanded="' + calOpen + '" aria-label="Month calendar">' + MONTHS[d.getMonth()] + ' ' + d.getFullYear() + ic('chev', 18) + '</button>' +
         '<span style="display:flex;align-items:center;gap:12px"><span class="sync" id="sync" role="status">' + esc(Store.label()) + '</span>' + (sel !== today ? '<button class="mbtn" data-a="today">Today</button>' : '') + '</span></div>' +
-        '<div class="ph-title"><div><div class="d1">' + DAYS[L.wd(sel)] + '</div><div class="d2">' + d.getDate() + ' ' + MONTHS[d.getMonth()] + ' · Week ' + isoWeek(sel) + '</div></div><div class="ringw">' + ringSvg(st.done, st.total, 44) + '<span>' + st.done + ' of ' + st.total + '</span></div></div>' +
+        '<div class="ph-title"><div><div class="d1">' + DAYS[L.wd(sel)] + '</div><div class="d2">' + d.getDate() + ' ' + MONTHS[d.getMonth()] + ' · Week ' + L.isoWeek(sel) + '</div></div><div class="ringw">' + ringSvg(st.done, st.total, 44) + '<span>' + st.done + ' of ' + st.total + '</span></div></div>' +
         (calOpen ? '<div class="phcal">' + renderCal() + tags + '</div>' : '<div class="wkstrip">' + strip + '</div>') + '</header>';
       main = '<main class="pmain">' + gridHtml() + '</main>';
       fab = '<button class="fab" data-a="new" aria-label="New block">' + ic('plus', 26) + '</button>';
@@ -289,13 +284,13 @@
     return '<svg width="24" height="24" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="' + p + '"></path></svg>';
   }
   function habitCard(h) {
-    var today = L.dk(now), ws = L.weekStart(today), st = L.monthStats(S, h.id, hv.y, hv.m, now), sk = L.streak(S, h.id, now);
+    var today = L.dk(now), ws = L.weekStart(today), st = L.monthStats(S, h.id, hv.y, hv.m, now), sk = L.streak(S, h.id, now), wk = L.weekStats(S, h.id, ws, now);
     var pct = st.planned ? Math.round(st.done / st.planned * 100) : 0, chk = L.habitChk(h.color), cells = '';
     for (var i = 0; i < 7; i++) {
       var D = L.addDays(ws, i), s = L.habitDay(S, h.id, D, now), fut = D > today;
-      cells += '<button data-a="hab" data-h="' + h.id + '" data-d="' + D + '"' + (fut ? ' disabled' : '') + ' aria-label="' + esc(h.name + ', ' + shortDate(D) + ': ' + stateLabel(s)) + '"><em' + (D === today ? ' class="t"' : '') + '>' + 'MTWTFSS'.charAt(i) + '</em><span class="wc ' + s + '">' + (s === 'done' ? ic('check', 16) : s === 'missed' ? ic('x', 14) : s === 'upcoming' ? '<i></i>' : '') + '</span></button>';
+      cells += '<button data-a="hab" data-h="' + h.id + '" data-d="' + D + '"' + (fut ? ' disabled' : '') + ' aria-label="' + esc(h.name + ', ' + shortDate(D) + ': ' + stateLabel(s)) + '"><em' + (D === today ? ' class="t"' : '') + '>' + 'MTWTFSS'.charAt(i) + '</em><small' + (D === today ? ' class="t"' : '') + '>' + L.parse(D).getDate() + '</small><span class="wc ' + s + '">' + (s === 'done' ? ic('check', 16) : s === 'missed' ? ic('x', 14) : s === 'upcoming' ? '<i></i>' : '') + '</span></button>';
     }
-    return '<section class="hcard" style="--c:' + h.color + ';--k:' + chk + '" aria-label="' + esc(h.name) + '"><div class="r1"><div class="nm"><span class="sw"></span>' + esc(h.name) + '</div><div class="muted small"><b style="font-size:20px;color:#fff;letter-spacing:-.01em">' + sk + '</b> in a row</div></div><div class="wk">' + cells + '</div><div class="bar" style="margin-top:14px"><i style="width:' + pct + '%"></i></div><div class="small muted" style="margin-top:6px">' + (st.planned ? st.done + ' of ' + st.planned + ' planned days this month' : 'Nothing planned yet this month') + '</div></section>';
+    return '<section class="hcard" style="--c:' + h.color + ';--k:' + chk + '" aria-label="' + esc(h.name) + '"><div class="r1"><div><div class="nm"><span class="sw"></span>' + esc(h.name) + '</div><div class="wkc">' + (wk.planned ? '<b>' + wk.done + '</b> of ' + wk.planned + ' this week' : 'Nothing planned this week') + '</div></div><div class="muted small"><b style="font-size:20px;color:#fff;letter-spacing:-.01em">' + sk + '</b> in a row</div></div><div class="wk">' + cells + '</div><div class="bar" style="margin-top:14px"><i style="width:' + pct + '%"></i></div><div class="small muted" style="margin-top:6px">' + (st.planned ? st.done + ' of ' + st.planned + ' planned days this month' : 'Nothing planned yet this month') + '</div></section>';
   }
 
   /* ---------- shared pieces ---------- */
@@ -373,7 +368,7 @@
 
   function renderDay() {
     var st = dayStats(), pct = st.total ? Math.round(st.done / st.total * 100) : 0;
-    return '<div class="card" style="overflow:hidden"><div class="dayh"><div><div class="d1">' + DAYS[L.wd(sel)] + '</div><div class="muted">' + longDate(sel) + ' · Week ' + isoWeek(sel) + '</div></div>' +
+    return '<div class="card" style="overflow:hidden"><div class="dayh"><div><div class="d1">' + DAYS[L.wd(sel)] + '</div><div class="muted">' + longDate(sel) + ' · Week ' + L.isoWeek(sel) + '</div></div>' +
       '<div class="prog">' + ringSvg(st.done, st.total, 40) + '<span>' + st.done + ' of ' + st.total + ' blocks done</span></div></div>' + gridHtml() + '</div>';
   }
 
@@ -395,15 +390,15 @@
       d = y + '-' + L.pad(mo + 1) + '-' + L.pad(i);
       head += '<div class="hdc' + (d === today ? ' t' : '') + '">' + 'MTWTFSS'.charAt(L.wd(d)) + '<span>' + i + '</span></div>';
     }
-    head += '<span class="small muted" style="text-align:center">Done</span></div>';
+    head += '<span class="small muted hh" title="This week">Week<br>W' + L.isoWeek(today) + '</span><span class="small muted hh" title="This month">Done</span></div>';
     var body = S.habits.map(function (h) {
-      var cells = '', st = L.monthStats(S, h.id, y, mo, now), chk = L.habitChk(h.color);
+      var cells = '', st = L.monthStats(S, h.id, y, mo, now), chk = L.habitChk(h.color), wk = L.weekStats(S, h.id, today, now);
       for (i = 1; i <= n; i++) {
         d = y + '-' + L.pad(mo + 1) + '-' + L.pad(i);
         var s = L.habitDay(S, h.id, d, now), fut = d > today;
         cells += '<span class="hcw' + (d === today ? ' t' : '') + '"><button class="hc ' + s + '" style="--c:' + h.color + ';--k:' + chk + '" data-a="hab" data-h="' + h.id + '" data-d="' + d + '"' + (fut ? ' disabled' : '') + ' aria-label="' + esc(h.name + ', ' + shortDate(d) + ': ' + stateLabel(s)) + '">' + (s === 'done' ? ic('check', 14) : s === 'missed' ? ic('x', 12) : s === 'upcoming' ? '<i></i>' : '') + '</button></span>';
       }
-      return '<div class="hrow b" style="--n:' + n + '"><span class="hl"><span class="sw" style="--c:' + h.color + '"></span><span class="hn">' + esc(h.name) + '</span></span>' + cells + '<span class="tot">' + st.done + '/' + st.planned + '</span></div>';
+      return '<div class="hrow b" style="--n:' + n + '"><span class="hl"><span class="sw" style="--c:' + h.color + '"></span><span class="hn">' + esc(h.name) + '</span></span>' + cells + '<span class="tot" title="This week: ' + wk.done + ' of ' + wk.planned + '">' + (wk.planned ? wk.done + '/' + wk.planned : '–') + '</span><span class="tot">' + st.done + '/' + st.planned + '</span></div>';
     }).join('');
     return '<div class="hv"><div class="cards">' + cards + '</div><div class="card pad tw"><div class="tin">' + head + body + '</div></div>' +
       '<div class="legend"><span><span class="lgd" style="background:#30D158;color:#06240F">' + ic('check', 11) + '</span>Done, logged automatically</span><span><span class="lgd" style="background:#2C2C2E;color:#AEAEB2">' + ic('x', 10) + '</span>Not done, you marked it</span><span><span class="lgd" style="border:2px dashed #409CFF"></span>Open today</span><span>Click any past circle to flip it.</span></div></div>';

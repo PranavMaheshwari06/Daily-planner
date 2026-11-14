@@ -25,6 +25,11 @@
   function addDays(s, n) { var d = parse(s); d.setDate(d.getDate() + n); return dk(d); }
   function wd(s) { return (parse(s).getDay() + 6) % 7; }            // Monday = 0
   function weekStart(s) { return addDays(s, -wd(s)); }
+  function isoWeek(s) {
+    var d = parse(s); d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7));
+    var w1 = new Date(d.getFullYear(), 0, 4);
+    return 1 + Math.round(((d - w1) / 864e5 - 3 + ((w1.getDay() + 6) % 7)) / 7);
+  }
   function fmtMin(m) { return m === 1440 ? '24:00' : pad(Math.floor(m / 60) % 24) + ':' + pad(m % 60); }
   function uid() { return Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-3); }
   function endAt(date, endMin) { var d = parse(date); d.setHours(0, endMin, 0, 0); return d; }
@@ -225,6 +230,27 @@
     return { done: done, missed: missed, planned: done + missed };
   }
 
+  /* Counts for one habit over the days from..to (inclusive). planned = days with a linked block or a manual mark,
+     future days included. upcoming = planned days that are not decided yet (days still to come, and today until the
+     block ends). So planned is always done + missed + upcoming. */
+  function rangeStats(state, H, from, to, now) {
+    var r = { done: 0, missed: 0, upcoming: 0, planned: 0 };
+    for (var d = from; d <= to; d = addDays(d, 1)) {
+      var s = habitDay(state, H, d, now);
+      if (s === 'done') r.done++;
+      else if (s === 'missed') r.missed++;
+      else if (s === 'open' || s === 'upcoming') r.upcoming++;
+    }
+    r.planned = r.done + r.missed + r.upcoming;
+    return r;
+  }
+
+  /* The week (Monday to Sunday) that contains weekStartDate. */
+  function weekStats(state, H, weekStartDate, now) {
+    var ws = weekStart(weekStartDate);
+    return rangeStats(state, H, ws, addDays(ws, 6), now);
+  }
+
   /* ---------- editing ---------- */
 
   function rekeyMarks(state, fn) {
@@ -415,12 +441,12 @@
 
   g.PlannerLogic = {
     DAY_START: DAY_START, DAY_END: DAY_END, TAGS: TAGS, PALETTE: PALETTE,
-    pad: pad, dk: dk, parse: parse, addDays: addDays, wd: wd, weekStart: weekStart, fmtMin: fmtMin, endAt: endAt,
+    pad: pad, dk: dk, parse: parse, addDays: addDays, wd: wd, weekStart: weekStart, isoWeek: isoWeek, fmtMin: fmtMin, endAt: endAt,
     tagById: tagById, tagList: tagList, habitChk: habitChk, normHex: normHex, contrast: contrast,
     addTag: addTag, updateTag: updateTag, deleteTag: deleteTag,
     newState: newState, occurrencesOn: occurrencesOn, findOcc: findOcc, layoutDay: layoutDay,
     occStatus: occStatus, toggleOcc: toggleOcc, habitDay: habitDay, toggleHabit: toggleHabit,
-    streak: streak, monthStats: monthStats, saveBlock: saveBlock, deleteBlock: deleteBlock,
+    streak: streak, monthStats: monthStats, rangeStats: rangeStats, weekStats: weekStats, saveBlock: saveBlock, deleteBlock: deleteBlock,
     deleteHabit: deleteHabit, normalize: normalize, earliest: earliest
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
