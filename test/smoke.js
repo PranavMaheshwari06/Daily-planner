@@ -317,9 +317,9 @@ const cloudFor = (store, uid) => ({ use: async n => n === 'db' ? mkDb(store) : n
     click(p, $$(p, '.phcal .cd')[20]); assert.ok($(p, '.wkstrip'));
     click(p, $(p, '[data-a="new"]')); assert.ok($(p, '.dlg .grab')); assert.ok($(p, '#f-title'));
     click(p, $(p, '[data-a="d-cancel"]'));
-    click(p, $$(p, '.tabbar button')[1]); assert.strictEqual($$(p, '.hcard').length, 5);
+    click(p, $(p, '.tabbar [data-v="habits"]')); assert.strictEqual($$(p, '.hcard').length, 5);
     assert.strictEqual($$(p, '.hcard')[0].querySelectorAll('.wk button').length, 7);
-    click(p, $$(p, '.tabbar button')[2]); assert.ok($(p, '.dlg'));
+    click(p, $(p, '.tabbar [data-a="data-open"]')); assert.ok($(p, '.dlg'));
     d.window.close();
   });
 
@@ -432,14 +432,14 @@ const cloudFor = (store, uid) => ({ use: async n => n === 'db' ? mkDb(store) : n
     assert.ok($(p, '.phtags .chip.ed'));
     click(p, $(p, '.phtags .chip.ed')); assert.match($(p, '.dlg h2').textContent, /Tags/); assert.ok($(p, '.dlg .grab'));
     click(p, $(p, '[data-a="tg-close"]'));
-    click(p, $$(p, '.tabbar button')[2]); click(p, $(p, '.dlg [data-a="tg-open"]'));
+    click(p, $(p, '.tabbar [data-a="data-open"]')); click(p, $(p, '.dlg [data-a="tg-open"]'));
     assert.match($(p, '.dlg h2').textContent, /Tags/); assert.strictEqual($$(p, '.dlg .hli').length, 6);
     d.window.close();
   });
 
   await t('phone Habits: date under each weekday letter, weekly counter on each card', async () => {
     const d = boot({ width: 390, claude: cloudFor(fixtureStore('f1'), 'f1') }); await wait(150); const p = d.window;
-    click(p, $$(p, '.tabbar button')[1]);
+    click(p, $(p, '.tabbar [data-v="habits"]'));
     const cards = $$(p, '.hcard'); assert.strictEqual(cards.length, 3);
     const cols = [...cards[0].querySelectorAll('.wk button')];
     assert.strictEqual(cols.length, 7);
@@ -460,9 +460,9 @@ const cloudFor = (store, uid) => ({ use: async n => n === 'db' ? mkDb(store) : n
     d.window.close();
     // the German block ends at 16:00: from then on it counts as done by itself
     const d2 = boot({ width: 390, claude: cloudFor(fixtureStore('f1b'), 'f1b') }); await wait(150); const q = d2.window;
-    click(q, $$(q, '.tabbar button')[1]); assert.strictEqual($$(q, '.hcard')[2].querySelector('.wkc').textContent, '0 of 1 this week');
+    click(q, $(q, '.tabbar [data-v="habits"]')); assert.strictEqual($$(q, '.hcard')[2].querySelector('.wkc').textContent, '0 of 1 this week');
     q.__off = 2 * 3600e3;                                                                    // 16:20
-    click(q, $$(q, '.tabbar button')[0]); click(q, $$(q, '.tabbar button')[1]);
+    click(q, $(q, '.tabbar [data-v="day"]')); click(q, $(q, '.tabbar [data-v="habits"]'));
     assert.strictEqual($$(q, '.hcard')[2].querySelector('.wkc').textContent, '1 of 1 this week');
     d2.window.close();
   });
@@ -495,7 +495,7 @@ const cloudFor = (store, uid) => ({ use: async n => n === 'db' ? mkDb(store) : n
   await t('phone Habits: monthly progress card above the habit cards', async () => {
     const d = boot({ width: 390, claude: cloudFor(fixtureStore('m1'), 'm1') }); await wait(150); const p = d.window;
     assert.ok(!$(p, '.mcard'), 'no monthly numbers on the Day view'); assert.ok($(p, '.ringw'));
-    click(p, $$(p, '.tabbar button')[1]);
+    click(p, $(p, '.tabbar [data-v="habits"]'));
     assert.strictEqual(p.__scrolls[p.__scrolls.length - 1], 0, 'Habits opens at the top, not where the Day grid was scrolled to');
     assert.ok($(p, '.phabits > .mcard:first-child'));
     assert.strictEqual($$(p, '.phabits > *')[1].className, 'hcard');
@@ -517,7 +517,7 @@ const cloudFor = (store, uid) => ({ use: async n => n === 'db' ? mkDb(store) : n
 
   await t('phone Habits: card follows the month and handles an empty month', async () => {
     const d = boot({ width: 390, claude: cloudFor(fixtureStore('m2'), 'm2') }); await wait(150); const p = d.window;
-    click(p, $$(p, '.tabbar button')[1]);
+    click(p, $(p, '.tabbar [data-v="habits"]'));
     click(p, $(p, '.ph [data-a="prev"]'));
     const c = cardText(p);
     assert.strictEqual(c.title, 'October'); assert.strictEqual(c.pct, '–'); assert.strictEqual(c.sub, 'Nothing planned this month');
@@ -526,7 +526,7 @@ const cloudFor = (store, uid) => ({ use: async n => n === 'db' ? mkDb(store) : n
     assert.strictEqual(cardText(p).title, 'December'); assert.strictEqual(cardText(p).pct, '–');
     d.window.close();
     const e = boot({ width: 390 }); await wait(100);                                           // no habits planned at all
-    click(e.window, $$(e.window, '.tabbar button')[1]);
+    click(e.window, $(e.window, '.tabbar [data-v="habits"]'));
     assert.strictEqual(cardText(e.window).sub, 'Nothing planned this month'); assert.match(cardText(e.window).streaks[0], /0 days$/);
     e.window.close();
   });
@@ -706,6 +706,76 @@ const cloudFor = (store, uid) => ({ use: async n => n === 'db' ? mkDb(store) : n
     assert.strictEqual(Object.keys(w.__planner.S.marks).filter(k => k.startsWith('b|2026-11-14')).length, 0);
     await wait(900);
     assert.strictEqual(st['data/users/c2/core'].blocks.length, 4);                    // saved to the cloud
+    d.window.close();
+  });
+
+  const wtile = (w, d, re) => $$(w, '.wcol[data-d="' + d + '"] .tile').find(t => re.test(t.textContent));
+
+  await t('week view: seven columns on a 24-hour axis, today marked, skipped block struck, prev/next/today', async () => {
+    const d = boot({ claude: cloudFor(fixtureStore('w1'), 'w1') }); await wait(150); const w = d.window;
+    assert.deepStrictEqual($$(w, '.seg button').map(b => b.textContent), ['Day', 'Week', 'Habits']);
+    click(w, $(w, '.seg [data-v="week"]'));
+    assert.ok($(w, '.wkv')); assert.ok(!$(w, '.grid'));
+    assert.strictEqual($$(w, '.wkh').length, 7); assert.strictEqual($$(w, '.wcol').length, 7); assert.strictEqual($$(w, '.wh').length, 7 * 24);
+    assert.strictEqual($(w, '.wkgrid').style.height, '1248px');
+    assert.deepStrictEqual($$(w, '.wkh').map(b => b.textContent), ['Mon9', 'Tue10', 'Wed11', 'Thu12', 'Fri13', 'Sat14', 'Sun15']);
+    assert.match($(w, '.top .ttl').textContent, /9 – 15 Nov 2026/); assert.match($(w, '.dayh').textContent, /Week 46/);
+    assert.ok($(w, '.side .cgrid') && !$(w, '.hside'), 'calendar and tags beside the week, no single-day habit list');
+    assert.ok($(w, '.wkh.today').textContent.includes('13') && $(w, '.wcol.today').dataset.d === '2026-11-13');
+    assert.ok($(w, '.wcol.today .wnow') && $$(w, '.wnow').length === 1);
+    assert.strictEqual($$(w, '.wcol .tile').length, 11);                                       // Mon-Fri Gym + Study, Fri German
+    assert.strictEqual($$(w, '.wcol[data-d="2026-11-14"] .tile').length, 0);
+    assert.ok(wtile(w, '2026-11-11', /Gym/).classList.contains('skip'));                     // marked not done on Wed
+    assert.ok(!wtile(w, '2026-11-12', /Gym/).classList.contains('skip'));
+    assert.strictEqual(wtile(w, '2026-11-13', /German/).querySelector('.tm').textContent, '15:00 – 16:00');
+    assert.match($(w, '.dayh .prog').textContent, /of 11 blocks done/);
+    click(w, $(w, '[data-a="next"]')); assert.match($(w, '.top .ttl').textContent, /16 – 22 Nov 2026/); assert.strictEqual($$(w, '.wcol .tile').length, 11);
+    assert.strictEqual($(w, '.wkh').dataset.d, '2026-11-16'); assert.ok(!$(w, '.wcol.today') && !$(w, '.wnow'));
+    click(w, $(w, '[data-a="prev"]')); click(w, $(w, '[data-a="prev"]')); assert.match($(w, '.top .ttl').textContent, /2 – 8 Nov 2026/);
+    click(w, $(w, '[data-a="today"]')); assert.match($(w, '.top .ttl').textContent, /9 – 15 Nov 2026/);
+    // the calendar moves the week without leaving the week view; tags hide blocks in it
+    click(w, $(w, '.cd[data-d="2026-11-25"]')); assert.ok($(w, '.wkv')); assert.match($(w, '.top .ttl').textContent, /23 – 29 Nov 2026/);
+    click(w, $(w, '[data-a="today"]'));
+    click(w, $(w, '.side [data-a="tag"][data-t="gym"]')); assert.strictEqual($$(w, '.wcol .tile').length, 6);
+    d.window.close();
+  });
+
+  await t('week view: header opens that day, hour opens New block for it, tile opens the editor, drag works', async () => {
+    const st = fixtureStore('w2'); const d = boot({ claude: cloudFor(st, 'w2') }); await wait(150); const w = d.window;
+    click(w, $(w, '.seg [data-v="week"]'));
+    click(w, $$(w, '.wkh')[2]);                                                              // Wed 11 Nov
+    assert.ok($(w, '.grid') && !$(w, '.wkv')); assert.match($(w, '.top .ttl').textContent, /Wednesday, 11 November 2026/);
+    click(w, $(w, '.seg [data-v="week"]')); assert.ok($(w, '.wkh.sel').textContent.includes('11'), 'the opened day stays selected');
+    click(w, $(w, '.wh[data-d="2026-11-14"][data-m="600"]'));                               // Sat 14, 10:00
+    assert.ok($(w, '.dlg')); assert.strictEqual($(w, '#f-date').value, '2026-11-14'); assert.strictEqual($(w, '[data-f="d-start"]').value, '600'); assert.strictEqual($(w, '[data-f="d-end"]').value, '660');
+    typeIn(w, $(w, '#f-title'), 'Brunch'); click(w, $(w, '[data-a="d-save"]'));
+    assert.ok(!$(w, '.dlg')); assert.ok($(w, '.wkv'), 'saving keeps the week view');
+    const brunch = wtile(w, '2026-11-14', /Brunch/); assert.ok(brunch); assert.strictEqual(brunch.querySelector('.tm').textContent, '10:00 – 11:00');
+    click(w, $$(w, '.wh')[0]); assert.ok($(w, '#f-date').value === '2026-11-09' && $(w, '[data-f="d-start"]').value === '0'); click(w, $(w, '[data-a="d-cancel"]'));
+    click(w, wtile(w, '2026-11-12', /Study/).querySelector('.tbody')); assert.strictEqual($(w, '#f-title').value, 'Study'); click(w, $(w, '[data-a="d-cancel"]'));
+    // drag inside a column: Fri German 15:00 +90 min, that day only
+    const ger = wtile(w, '2026-11-13', /German/); ptr(w, 'pointerdown', ger.querySelector('.tbody'), 100); ptr(w, 'pointermove', ger.querySelector('.tbody'), 178); ptr(w, 'pointerup', ger.querySelector('.tbody'), 178);
+    assert.strictEqual(wtile(w, '2026-11-13', /German/).querySelector('.tm').textContent, '16:30 – 17:30');
+    assert.match($(w, '#toast').textContent, /Moved to 16:30 – 17:30/);
+    d.window.close();
+  });
+
+  await t('week view on a phone: Day, Week, Habits, Data tabs; compact columns; prev/next week; tap day header', async () => {
+    const d = boot({ width: 390, claude: cloudFor(fixtureStore('w3'), 'w3') }); await wait(150); const p = d.window;
+    assert.deepStrictEqual($$(p, '.tabbar button').map(b => b.textContent), ['Day', 'Week', 'Habits', 'Data']);
+    click(p, $(p, '.tabbar [data-v="week"]'));
+    assert.ok($(p, '.pmain .wkv') && $(p, '.fab') && !$(p, '.side')); assert.strictEqual($$(p, '.wcol').length, 7); assert.strictEqual($$(p, '.wcol .tile').length, 11);
+    assert.match($(p, '.ph .mbtn').textContent, /9 – 15 Nov 2026/); assert.match($(p, '.ph-title .d1').textContent, /Week 46/);
+    assert.ok(!$(p, '.ph [data-a="today"]'), 'no Today button on the current week');
+    click(p, $(p, '.ph [data-a="next"]')); assert.match($(p, '.ph .mbtn').textContent, /16 – 22 Nov 2026/); assert.ok($(p, '.ph [data-a="today"]'));
+    click(p, $(p, '.ph [data-a="today"]')); assert.match($(p, '.ph .mbtn').textContent, /9 – 15 Nov 2026/);
+    click(p, $(p, '.fab')); assert.ok($(p, '.dlg')); click(p, $(p, '[data-a="d-cancel"]'));
+    click(p, $$(p, '.wkh')[4]); assert.ok($(p, '.grid') && !$(p, '.wkv')); assert.match($(p, '.ph-title .d1').textContent, /Friday/);
+    assert.ok($(p, '.tabbar [data-v="day"]').classList.contains('on'));
+    click(p, $(p, '.tabbar [data-v="week"]')); assert.ok($(p, '.tabbar [data-v="week"]').classList.contains('on'));
+    // swipe left on the week moves to the next week
+    const tch = (type, x, y) => { const e = new p.Event(type, { bubbles: true }); e.touches = [{ clientX: x, clientY: y }]; e.changedTouches = [{ clientX: x, clientY: y }]; $(p, '.pmain').dispatchEvent(e); };
+    tch('touchstart', 300, 300); tch('touchend', 150, 305); assert.match($(p, '.ph .mbtn').textContent, /16 – 22 Nov 2026/);
     d.window.close();
   });
 

@@ -217,6 +217,7 @@
     now = new Date(); phone = detectPhone();
     var banner = Store.offlineBanner ? '<div class="banner" role="alert"><b>Not syncing.</b> This page is not signed in to Claude, so changes stay on this device only. Open the link in Chrome while signed in to claude.ai.</div>' : '';
     $app.innerHTML = banner + (phone ? renderPhone() : renderDesk());
+    var hdr = $app.querySelector('.ph,.top'); if (hdr) $app.style.setProperty('--hh', hdr.offsetHeight + 'px');
     if (quick) {
       var q = $app.querySelector('.qin');
       if (q && quick.focus) { q.focus(); try { q.setSelectionRange(q.value.length, q.value.length); } catch (e) { } }
@@ -224,19 +225,21 @@
   }
 
   function renderDesk() {
-    return renderTop() + '<div class="body">' + (view === 'day' ? '<aside class="side">' + renderCal() + renderTags() + renderHabitSide() + '</aside>' : '') + '<main class="main">' +
-      (view === 'day' ? renderDay() : renderHabits()) + '</main></div>';
+    return renderTop() + '<div class="body">' + (view === 'day' ? '<aside class="side">' + renderCal() + renderTags() + renderHabitSide() + '</aside>' : view === 'week' ? '<aside class="side">' + renderCal() + renderTags() + '</aside>' : '') + '<main class="main">' +
+      (view === 'day' ? renderDay() : view === 'week' ? renderWeek() : renderHabits()) + '</main></div>';
   }
 
   function renderTop() {
-    var nav = view === 'day'
+    var nav = view === 'week'
+      ? '<div class="dnav"><button class="btn" data-a="today">Today</button><button class="ib" data-a="prev" aria-label="Previous week">' + ic('l', 16) + '</button><button class="ib" data-a="next" aria-label="Next week">' + ic('r', 16) + '</button><span class="ttl">' + esc(weekRange(sel)) + '</span></div>'
+      : view === 'day'
       ? '<div class="dnav"><button class="btn" data-a="today">Today</button><button class="ib" data-a="prev" aria-label="Previous day">' + ic('l', 16) + '</button><button class="ib" data-a="next" aria-label="Next day">' + ic('r', 16) + '</button><span class="ttl">' + esc(DAYS[L.wd(sel)] + ', ' + longDate(sel)) + '</span></div>'
       : '<div class="dnav"><button class="btn" data-a="today">This month</button><button class="ib" data-a="prev" aria-label="Previous month">' + ic('l', 16) + '</button><button class="ib" data-a="next" aria-label="Next month">' + ic('r', 16) + '</button><span class="ttl">' + MONTHS[hv.m] + ' ' + hv.y + '</span></div>';
     return '<header class="top"><div class="brand"><span class="logo"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="3.5" width="13" height="12" rx="2.5"/><path d="M2.5 7.5h13M6 2v3M12 2v3"/></svg></span>Planner</div>' +
-      '<div class="seg" role="group" aria-label="View"><button data-a="view" data-v="day" class="' + (view === 'day' ? 'on' : '') + '" aria-pressed="' + (view === 'day') + '">Day</button><button data-a="view" data-v="habits" class="' + (view === 'habits' ? 'on' : '') + '" aria-pressed="' + (view === 'habits') + '">Habits</button></div>' +
+      '<div class="seg" role="group" aria-label="View"><button data-a="view" data-v="day" class="' + (view === 'day' ? 'on' : '') + '" aria-pressed="' + (view === 'day') + '">Day</button><button data-a="view" data-v="week" class="' + (view === 'week' ? 'on' : '') + '" aria-pressed="' + (view === 'week') + '">Week</button><button data-a="view" data-v="habits" class="' + (view === 'habits' ? 'on' : '') + '" aria-pressed="' + (view === 'habits') + '">Habits</button></div>' +
       nav + '<span class="grow"></span><span class="sync" id="sync" role="status">' + esc(Store.label()) + '</span>' +
       '<button class="btn" data-a="data-open">Data</button>' +
-      (view === 'day' ? '<button class="btn pri" data-a="new">' + ic('plus', 14) + ' New block</button>' : '<button class="btn" data-a="hm-open">Edit habits</button>') + '</header>';
+      (view !== 'habits' ? '<button class="btn pri" data-a="new">' + ic('plus', 14) + ' New block</button>' : '<button class="btn" data-a="hm-open">Edit habits</button>') + '</header>';
   }
 
   /* ---------- phone ---------- */
@@ -267,13 +270,19 @@
         (calOpen ? '<div class="phcal">' + renderCal() + tags + '</div>' : '<div class="wkstrip">' + strip + '</div>') + '</header>';
       main = '<main class="pmain">' + gridHtml() + '</main>';
       fab = '<button class="fab" data-a="new" aria-label="New block">' + ic('plus', 26) + '</button>';
+    } else if (view === 'week') {
+      head = '<header class="ph"><div class="ph-top"><span style="display:flex;align-items:center;gap:4px"><button class="ib s" data-a="prev" aria-label="Previous week">' + ic('l') + '</button><span class="mbtn" style="cursor:default">' + esc(weekRange(sel)) + '</span><button class="ib s" data-a="next" aria-label="Next week">' + ic('r') + '</button></span>' +
+        '<span style="display:flex;align-items:center;gap:12px"><span class="sync" id="sync" role="status">' + esc(Store.label()) + '</span>' + (L.weekStart(sel) !== L.weekStart(today) ? '<button class="mbtn" data-a="today">Today</button>' : '') + '</span></div>' +
+        '<div class="ph-title"><div><div class="d1">Week ' + L.isoWeek(sel) + '</div><div class="d2">Tap a day to open it. Tap an hour to add a block.</div></div></div><div style="height:8px"></div></header>';
+      main = '<main class="pmain">' + weekHtml() + '</main>';
+      fab = '<button class="fab" data-a="new" aria-label="New block">' + ic('plus', 26) + '</button>';
     } else {
       head = '<header class="ph"><div class="ph-top"><span style="display:flex;align-items:center;gap:4px"><button class="ib s" data-a="prev" aria-label="Previous month">' + ic('l') + '</button><span class="mbtn" style="cursor:default">' + MONTHS[hv.m] + ' ' + hv.y + '</span><button class="ib s" data-a="next" aria-label="Next month">' + ic('r') + '</button></span>' +
         '<span style="display:flex;align-items:center;gap:12px"><span class="sync" id="sync" role="status">' + esc(Store.label()) + '</span><button class="mbtn" data-a="hm-open">Edit</button></span></div>' +
         '<div class="ph-title"><div><div class="d1">Habits</div><div class="d2">This week. Done boxes log themselves; tap one to flip it.</div></div></div><div style="height:10px"></div></header>';
       main = '<main class="pmain"><div class="phabits">' + monthCard() + S.habits.map(habitCard).join('') + (S.habits.length ? '' : '<div class="note">No habits yet. Tap Edit to add one.</div>') + '</div></main>';
     }
-    var tabs = [['day', 'Day', 'day'], ['habits', 'Habits', 'habit'], ['data', 'Data', 'data']].map(function (t) {
+    var tabs = [['day', 'Day', 'day'], ['week', 'Week', 'week'], ['habits', 'Habits', 'habit'], ['data', 'Data', 'data']].map(function (t) {
       var on = view === t[0];
       return t[0] === 'data' ? '<button data-a="data-open" aria-label="Data">' + tabIcon(t[2]) + 'Data</button>'
         : '<button class="' + (on ? 'on' : '') + '" data-a="view" data-v="' + t[0] + '" aria-pressed="' + on + '">' + tabIcon(t[2]) + t[1] + '</button>';
@@ -281,7 +290,7 @@
     return head + main + fab + '<nav class="tabbar" aria-label="Main">' + tabs + '</nav>';
   }
   function tabIcon(n) {
-    var p = { day: 'M3.5 5.5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-7a2 2 0 0 1-2-2zM3.5 7.5h11M6.5 2.5v2M11.5 2.5v2', habit: 'M3.5 3.5h4.5v4.5H3.5zM10 3.5h4.5v4.5H10zM3.5 10H8v4.5H3.5zM11 12l1.5 1.5L15 10.5', data: 'M9 3c3 0 5.5.9 5.5 2s-2.5 2-5.5 2-5.5-.9-5.5-2S6 3 9 3zM3.5 5v8c0 1.1 2.5 2 5.5 2s5.5-.9 5.5-2V5M3.5 9c0 1.1 2.5 2 5.5 2s5.5-.9 5.5-2' }[n];
+    var p = { week: 'M3.5 3.5h11v11h-11zM7.2 3.5v11M10.8 3.5v11', day: 'M3.5 5.5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-7a2 2 0 0 1-2-2zM3.5 7.5h11M6.5 2.5v2M11.5 2.5v2', habit: 'M3.5 3.5h4.5v4.5H3.5zM10 3.5h4.5v4.5H10zM3.5 10H8v4.5H3.5zM11 12l1.5 1.5L15 10.5', data: 'M9 3c3 0 5.5.9 5.5 2s-2.5 2-5.5 2-5.5-.9-5.5-2S6 3 9 3zM3.5 5v8c0 1.1 2.5 2 5.5 2s5.5-.9 5.5-2V5M3.5 9c0 1.1 2.5 2 5.5 2s5.5-.9 5.5-2' }[n];
     return '<svg width="24" height="24" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="' + p + '"></path></svg>';
   }
   /* Monthly progress, in numbers. Habits tab only (phone: above the cards, desktop: above the grid). */
@@ -387,6 +396,37 @@
     var nl = '', mins = Math.round((now - L.parse(sel)) / 60000);
     if (mins >= L.DAY_START && mins < L.DAY_END) nl = '<div class="nowl" style="top:' + ((mins - L.DAY_START) * HOUR_PX / 60) + 'px"><b>' + L.fmtMin(mins) + '</b><s></s><u></u></div>';
     return '<div class="grid" style="height:' + (24 * HOUR_PX) + 'px">' + rows + '<div class="ov">' + tiles + q + '</div>' + nl + '</div>';
+  }
+
+  /* ---------- week: seven day columns on the same 24-hour axis ---------- */
+  function weekRange(D) {
+    var a = L.parse(L.weekStart(D)), b = L.parse(L.addDays(L.weekStart(D), 6)), ma = MONTHS[a.getMonth()].slice(0, 3), mb = MONTHS[b.getMonth()].slice(0, 3);
+    return a.getMonth() === b.getMonth() ? a.getDate() + ' – ' + b.getDate() + ' ' + mb + ' ' + b.getFullYear() : a.getDate() + ' ' + ma + ' – ' + b.getDate() + ' ' + mb + ' ' + b.getFullYear();
+  }
+  function weekHtml() {
+    var ws = L.weekStart(sel), today = L.dk(now), i, h, head = '<span></span>', axis = '', cols = '';
+    for (h = 0; h < 24; h++) axis += '<span class="wax">' + (h ? L.fmtMin(h * 60) : '') + '</span>';
+    for (i = 0; i < 7; i++) {
+      var D = L.addDays(ws, i), dn = L.parse(D).getDate(), cls = (D === today ? ' today' : '') + (D === sel ? ' sel' : '');
+      head += '<button class="wkh' + cls + '" data-a="wk-day" data-d="' + D + '" aria-label="Open ' + esc(longDate(D)) + '"' + (D === today ? ' aria-current="date"' : '') + '><em>' + DAYS[i].slice(0, 3) + '</em><b>' + dn + '</b></button>';
+      var occs = visibleOccs(D), sts = occs.map(function (o) { return L.occStatus(S, o, now); }), slots = '';
+      for (h = 0; h < 24; h++) slots += '<button class="wh" data-a="wslot" data-d="' + D + '" data-m="' + h * 60 + '" aria-label="Add a block on ' + esc(shortDate(D)) + ' at ' + L.fmtMin(h * 60) + '"></button>';
+      var tiles = L.layoutDay(occs.map(function (o, k) { o._s = sts[k]; return o; })).map(function (o) {
+        var t = L.tagById(S, o.tag), s = o._s, top = (o.start - L.DAY_START) * HOUR_PX / 60 + 2, hgt = (o.end - o.start) * HOUR_PX / 60 - 4, pw = 100 / o.cols, lf = o.col * pw;
+        var when = L.fmtMin(o.start) + ' – ' + L.fmtMin(o.end);
+        return '<div class="tile wt' + (o.end - o.start <= 60 ? ' short' : '') + (s === 'x' ? ' skip' : '') + (s === 'd' ? ' dn' : '') + '" data-k="' + esc(o.key) + '" style="top:' + top + 'px;height:' + hgt + 'px;left:calc(' + lf + '% + 1px);width:calc(' + pw + '% - 2px);background:' + t.fill + ';color:' + t.text + ';--c:' + t.box + ';--k:' + t.chk + '">' +
+          '<button class="tbody" data-a="open" data-k="' + esc(o.key) + '" aria-label="' + esc('Edit ' + o.title + ', ' + when + (s === 'd' ? ', done' : s === 'x' ? ', not done' : '')) + '"><span class="tt">' + (s === 'd' ? ic('check', 11) + ' ' : '') + esc(o.title) + '</span><span class="tm">' + when + '</span></button><span class="rz rz-t" aria-hidden="true"></span><span class="rz rz-b" aria-hidden="true"></span></div>';
+      }).join('');
+      var mins = Math.round((now - L.parse(D)) / 60000), nl = D === today && mins >= L.DAY_START && mins < L.DAY_END ? '<div class="wnow" style="top:' + ((mins - L.DAY_START) * HOUR_PX / 60) + 'px"></div>' : '';
+      cols += '<div class="wcol' + cls + '" data-d="' + D + '">' + slots + '<div class="wov">' + tiles + '</div>' + nl + '</div>';
+    }
+    return '<div class="wkv" aria-label="Week ' + L.isoWeek(sel) + '"><div class="wkhead">' + head + '</div><div class="wkgrid" style="height:' + (24 * HOUR_PX) + 'px"><div class="wkaxis" aria-hidden="true">' + axis + '</div>' + cols + '</div></div>';
+  }
+  function renderWeek() {
+    var occs = 0, done = 0, i;
+    for (i = 0; i < 7; i++) visibleOccs(L.addDays(L.weekStart(sel), i)).forEach(function (o) { occs++; if (L.occStatus(S, o, now) === 'd') done++; });
+    return '<div class="card" style="overflow:clip"><div class="dayh"><div><div class="d1">Week ' + L.isoWeek(sel) + '</div><div class="muted">' + esc(weekRange(sel)) + '</div></div>' +
+      '<div class="prog">' + ringSvg(done, occs, 40) + '<span>' + done + ' of ' + occs + ' blocks done</span></div></div>' + weekHtml() + '</div>';
   }
 
   function renderDay() {
@@ -555,9 +595,10 @@
   /* The day grid is 24 hours tall. Open it near the current time, or at 06:00 on other days. */
   function scrollToDay() {
     try {
-      var g = document.querySelector('.grid'); if (!g || view !== 'day') return;
-      var hd = document.querySelector('.ph,.top'), hh = hd ? hd.offsetHeight : 0;
-      var mins = Math.round((now - L.parse(sel)) / 60000), isNow = sel === L.dk(now) && mins >= L.DAY_START && mins < L.DAY_END;
+      var g = document.querySelector('.grid,.wkgrid'); if (!g || view === 'habits') return;
+      var hd = document.querySelector('.ph,.top'), hh = (hd ? hd.offsetHeight : 0) + (view === 'week' ? 52 : 0);
+      var tgt = view === 'week' ? L.dk(now) : sel, mins = Math.round((now - L.parse(tgt)) / 60000);
+      var isNow = tgt === L.dk(now) && (view === 'day' || L.weekStart(sel) === L.weekStart(tgt)) && mins >= L.DAY_START && mins < L.DAY_END;
       var y = g.getBoundingClientRect().top + window.scrollY + (isNow ? mins : 360) * HOUR_PX / 60 - hh - (isNow ? 90 : 8);
       window.scrollTo(0, Math.max(0, y));
     } catch (e) { }
@@ -585,13 +626,15 @@
   }
 
   var actions = {
-    view: function (el) { view = el.dataset.v; quick = null; render(); if (view === 'day') scrollToDay(); else { try { window.scrollTo(0, 0); } catch (e) { } } },
+    view: function (el) { view = el.dataset.v; quick = null; render(); if (view !== 'habits') scrollToDay(); else { try { window.scrollTo(0, 0); } catch (e) { } } },
     today: function () { now = new Date(); sel = L.dk(now); syncCal(); hv = { y: now.getFullYear(), m: now.getMonth() }; quick = null; render(); scrollToDay(); },
-    prev: function () { if (view === 'day') { sel = L.addDays(sel, -1); syncCal(); quick = null; } else { hv.m--; if (hv.m < 0) { hv.m = 11; hv.y--; } } render(); },
-    next: function () { if (view === 'day') { sel = L.addDays(sel, 1); syncCal(); quick = null; } else { hv.m++; if (hv.m > 11) { hv.m = 0; hv.y++; } } render(); },
+    prev: function () { if (view === 'day' || view === 'week') { sel = L.addDays(sel, view === 'week' ? -7 : -1); syncCal(); quick = null; } else { hv.m--; if (hv.m < 0) { hv.m = 11; hv.y--; } } render(); },
+    next: function () { if (view === 'day' || view === 'week') { sel = L.addDays(sel, view === 'week' ? 7 : 1); syncCal(); quick = null; } else { hv.m++; if (hv.m > 11) { hv.m = 0; hv.y++; } } render(); },
     'cal-prev': function () { cal.m--; if (cal.m < 0) { cal.m = 11; cal.y--; } render(); },
     'cal-next': function () { cal.m++; if (cal.m > 11) { cal.m = 0; cal.y++; } render(); },
-    pick: function (el) { sel = el.dataset.d; syncCal(); quick = null; calOpen = false; if (view !== 'day') view = 'day'; render(); scrollToDay(); },
+    pick: function (el) { sel = el.dataset.d; syncCal(); quick = null; calOpen = false; if (view === 'habits') view = 'day'; render(); scrollToDay(); },
+    'wk-day': function (el) { sel = el.dataset.d; syncCal(); quick = null; view = 'day'; render(); scrollToDay(); },
+    wslot: function (el) { sel = el.dataset.d; syncCal(); openNew({ start: +el.dataset.m }); },
     'cal-toggle': function () { calOpen = !calOpen; syncCal(); render(); },
     tag: function (el) {
       var t = el.dataset.t, i = S.hiddenTags.indexOf(t);
@@ -853,7 +896,7 @@
   /* ================= phone gestures, live updates ================= */
   var tx = 0, ty = 0, tOk = false;
   document.addEventListener('touchstart', function (e) {
-    tOk = phone && view === 'day' && !busy() && e.target.closest && !!e.target.closest('.pmain');
+    tOk = phone && (view === 'day' || view === 'week') && !busy() && e.target.closest && !!e.target.closest('.pmain');
     if (tOk && e.touches[0]) { tx = e.touches[0].clientX; ty = e.touches[0].clientY; }
   }, { passive: true });
   document.addEventListener('touchend', function (e) {
