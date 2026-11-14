@@ -14,7 +14,7 @@
   var sel = L.dk(now);
   var cal = { y: now.getFullYear(), m: now.getMonth() };
   var hv = { y: now.getFullYear(), m: now.getMonth() };
-  var quick = null, dlg = null, hdlg = null, ddlg = null, tdlg = null;
+  var quick = null, dlg = null, hdlg = null, ddlg = null, tdlg = null, drag = null;
   var lastTag = 'personal';
   var ready = false;
 
@@ -27,6 +27,7 @@
   function longDate(s) { var d = L.parse(s); return d.getDate() + ' ' + MONTHS[d.getMonth()] + ' ' + d.getFullYear(); }
   function shortDate(s) { var d = L.parse(s); return DAYS[L.wd(s)].slice(0, 3) + ' ' + d.getDate() + ' ' + MONTHS[d.getMonth()].slice(0, 3); }
   function anyDlg() { return dlg || hdlg || ddlg || tdlg; }
+  function busy() { return anyDlg() || quick || drag; }   // something is open or in progress: do not redraw underneath it
   function habitById(id) { for (var i = 0; i < S.habits.length; i++) if (S.habits[i].id === id) return S.habits[i]; return null; }
   function tagVars(t) { return '--b:' + t.box + ';--f:' + t.fill + ';--t:' + t.text; }
 
@@ -370,9 +371,9 @@
       if (hb) pill = s === 'd' ? '<span class="pill on">' + ic('check', 11) + ' ' + (phone ? 'Logged' : 'Logged to ' + esc(hb.name)) + '</span>' : s === 'x' ? '<span class="pill off">Not logged</span>' : '<span class="pill dash">' + (phone ? 'Auto-logs' : 'Auto-logs to ' + esc(hb.name)) + '</span>';
       var pw = 100 / o.cols, lf = o.col * pw, key = o.key;
       var sub = L.fmtMin(o.start) + ' – ' + L.fmtMin(o.end) + ' · ' + (phone && hb ? esc(hb.name) : t.name);
-      return '<div class="tile' + (short ? ' short' : '') + (s === 'x' ? ' skip' : '') + '" style="top:' + top + 'px;height:' + hgt + 'px;left:calc(' + lf + '% + 4px);width:calc(' + pw + '% - 8px);background:' + t.fill + ';color:' + t.text + ';--c:' + t.box + ';--k:' + t.chk + '">' +
+      return '<div class="tile' + (short ? ' short' : '') + (s === 'x' ? ' skip' : '') + '" data-k="' + esc(key) + '" style="top:' + top + 'px;height:' + hgt + 'px;left:calc(' + lf + '% + 4px);width:calc(' + pw + '% - 8px);background:' + t.fill + ';color:' + t.text + ';--c:' + t.box + ';--k:' + t.chk + '">' +
         '<button class="chk' + (s === 'd' ? ' on' : s === 'x' ? ' off' : '') + '" data-a="occ" data-k="' + esc(key) + '" aria-pressed="' + (s === 'd') + '" aria-label="' + esc(o.title + ': ' + (s === 'd' ? 'done. Tap if you did not do it' : s === 'x' ? 'not done. Tap to mark done' : 'planned. Tap to mark done')) + '">' + (s === 'd' ? ic('check', 14) : s === 'x' ? ic('x', 12) : '') + '</button>' +
-        '<button class="tbody" data-a="open" data-k="' + esc(key) + '" aria-label="Edit ' + esc(o.title) + '"><span class="tt">' + esc(o.title) + '</span><span class="tm">' + sub + '</span></button>' + pill + '</div>';
+        '<button class="tbody" data-a="open" data-k="' + esc(key) + '" aria-label="Edit ' + esc(o.title) + '"><span class="tt">' + esc(o.title) + '</span><span class="tm">' + sub + '</span></button>' + pill + '<span class="rz rz-t" aria-hidden="true"></span><span class="rz rz-b" aria-hidden="true"></span></div>';
     }).join('');
 
     var q = '';
@@ -437,10 +438,14 @@
   }
   function closeDlg() {
     dlg = null; hdlg = null; ddlg = null; tdlg = null; $dlg.innerHTML = '';
+    if (flushPending()) render();
+  }
+  /* A remote change that arrived while something was open: take it unless we changed things meanwhile. */
+  function flushPending() {
     var fresh = pendingRemote && !Store.dirty;
     if (fresh) S = pendingRemote;
     pendingRemote = null;
-    if (fresh) render();
+    return fresh;
   }
   function openDlg(focusSel) {
     renderDlg();
@@ -587,6 +592,11 @@
     hab: function (el) { now = new Date(); if (L.toggleHabit(S, el.dataset.h, el.dataset.d, now)) commit(); },
     occ: function (el) { now = new Date(); var o = L.findOcc(S, el.dataset.k); if (o) { L.toggleOcc(S, o, now); commit(); } },
     open: function (el) { openEdit(el.dataset.k); },
+    undo: function () {
+      if (!undoSnap) return;
+      var st = L.normalize(JSON.parse(undoSnap)); hideToast();
+      if (st) { S = st; commit(); }
+    },
     chip: function (el) {
       var t = document.getElementById('hc-' + el.dataset.h); if (!t) return;
       var calm = false; try { calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { }
@@ -683,6 +693,7 @@
   }
 
   document.addEventListener('click', function (e) {
+    if (suppressClick) { suppressClick = false; e.preventDefault(); return; }      // the click that ends a drag
     var el = e.target.closest('[data-a]');
     if (!el || el.disabled) return;
     var fn = actions[el.dataset.a];
@@ -735,6 +746,7 @@
 
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape') {
+      if (drag) { dragCancel(); return; }
       if (anyDlg()) { var wasEdit = !!(hdlg || tdlg); closeDlg(); if (wasEdit) commit(); else render(); }
       else if (quick) { quick = null; render(); }
     } else if (e.key === 'Enter' && quick && e.target.classList && e.target.classList.contains('qin')) {
@@ -744,10 +756,87 @@
     }
   });
 
+  /* ================= toast (with undo) ================= */
+  var $toast = document.createElement('div'), toastTimer = null, undoSnap = null;
+  $toast.id = 'toast'; $toast.setAttribute('role', 'status'); document.body.appendChild($toast);
+  function showToast(msg, snap) {
+    undoSnap = snap || null;
+    $toast.innerHTML = '<div class="toast"><span>' + esc(msg) + '</span>' + (snap ? '<button data-a="undo">Undo</button>' : '') + '</div>';
+    clearTimeout(toastTimer); toastTimer = setTimeout(hideToast, 7000);
+  }
+  function hideToast() { clearTimeout(toastTimer); $toast.innerHTML = ''; undoSnap = null; }
+
+  /* ================= drag to move and resize ================= */
+  /* Mouse and pen: press and move on a tile to move it, on its top or bottom edge to resize it.
+     Touch: resize handles work at once, a tile moves after a short press (so scrolling still works).
+     Times snap to 15 minutes. A repeating block changes on that day only. */
+  var suppressClick = false;
+  function dragEnd() {
+    if (!drag) return;
+    clearTimeout(drag.timer); if (drag.raf) cancelAnimationFrame(drag.raf);
+    document.body.classList.remove('dragging');
+  }
+  function dragBegin() {
+    drag.on = true; drag.el.classList.add('drag'); document.body.classList.add('dragging');
+    try { drag.el.setPointerCapture(drag.id); } catch (e) { }
+    drag.raf = requestAnimationFrame(dragTick);
+  }
+  function dragApply() {
+    var dy = (drag.lastY - drag.y0) + (window.scrollY - drag.sy0);
+    var t = drag.times = L.dragTimes(drag.occ.start, drag.occ.end, drag.mode, dy * 60 / HOUR_PX), el = drag.el;
+    el.style.top = ((t.start - L.DAY_START) * HOUR_PX / 60 + 2) + 'px';
+    el.style.height = ((t.end - t.start) * HOUR_PX / 60 - 4) + 'px';
+    el.classList.toggle('short', t.end - t.start <= 60);
+    var tm = el.querySelector('.tm');
+    if (tm) tm.textContent = tm.textContent.replace(/^\d\d:\d\d – \d\d:\d\d/, L.fmtMin(t.start) + ' – ' + L.fmtMin(t.end));
+  }
+  function dragTick() {          // scroll the page while the pointer is held near the top or bottom edge
+    if (!drag) return;
+    if (drag.vel) { try { window.scrollBy(0, drag.vel); } catch (e) { } dragApply(); }
+    drag.raf = requestAnimationFrame(dragTick);
+  }
+  function dragCancel() { var was = drag && drag.on; dragEnd(); drag = null; if (was) render(); }
+  function dragFinish() {
+    var d = drag; dragEnd(); drag = null;
+    if (!d.on) return;                                         // it was a plain click: the tile's button handles it
+    suppressClick = true; setTimeout(function () { suppressClick = false; }, 50);
+    var t = d.times;
+    if (t.start === d.occ.start && t.end === d.occ.end) { flushPending(); render(); return; }
+    var snap = JSON.stringify(S), r = L.retimeBlock(S, d.key, t.start, t.end);
+    if (!r.ok) { render(); showToast(r.error || 'Could not change that block.'); return; }
+    pendingRemote = null; commit();
+    showToast((d.mode === 'move' ? 'Moved to ' : 'Now ') + L.fmtMin(t.start) + ' – ' + L.fmtMin(t.end) + (r.series ? ', this day only' : ''), snap);
+  }
+
+  document.addEventListener('pointerdown', function (e) {
+    if (drag || quick || anyDlg() || e.button > 0 || !e.target.closest) return;
+    var tile = e.target.closest('.tile'); if (!tile || e.target.closest('.chk')) return;
+    var o = L.findOcc(S, tile.dataset.k); if (!o) return;
+    var mode = e.target.closest('.rz-t') ? 'top' : e.target.closest('.rz-b') ? 'bottom' : 'move';
+    drag = { el: tile, key: tile.dataset.k, occ: o, mode: mode, id: e.pointerId, x0: e.clientX, y0: e.clientY, lastY: e.clientY, sy0: window.scrollY, on: false, vel: 0, times: { start: o.start, end: o.end }, timer: 0, raf: 0 };
+    if (e.pointerType === 'touch' && mode === 'move') drag.timer = setTimeout(function () { if (drag && !drag.on) dragBegin(); }, 350);
+  });
+  document.addEventListener('pointermove', function (e) {
+    if (!drag || e.pointerId !== drag.id) return;
+    drag.lastY = e.clientY;
+    if (!drag.on) {
+      var dist = Math.abs(e.clientY - drag.y0) + Math.abs(e.clientX - drag.x0);
+      if (drag.timer) { if (dist > 8) { dragEnd(); drag = null; } return; }      // touch moved before the long press: the page is scrolling
+      if (dist < 5) return;
+      dragBegin();
+    }
+    var hd = document.querySelector('.ph,.top'), top = (hd ? hd.offsetHeight : 0) + 36, bottom = window.innerHeight - (phone ? 120 : 40);
+    drag.vel = e.clientY < top ? -Math.min(16, (top - e.clientY) / 4 + 2) : e.clientY > bottom ? Math.min(16, (e.clientY - bottom) / 4 + 2) : 0;
+    e.preventDefault(); dragApply();
+  });
+  document.addEventListener('pointerup', function (e) { if (drag && e.pointerId === drag.id) dragFinish(); });
+  document.addEventListener('pointercancel', function (e) { if (drag && e.pointerId === drag.id) dragCancel(); });
+  document.addEventListener('touchmove', function (e) { if (drag && drag.on && e.cancelable) e.preventDefault(); }, { passive: false });
+
   /* ================= phone gestures, live updates ================= */
   var tx = 0, ty = 0, tOk = false;
   document.addEventListener('touchstart', function (e) {
-    tOk = phone && view === 'day' && !anyDlg() && !quick && e.target.closest && !!e.target.closest('.pmain');
+    tOk = phone && view === 'day' && !busy() && e.target.closest && !!e.target.closest('.pmain');
     if (tOk && e.touches[0]) { tx = e.touches[0].clientX; ty = e.touches[0].clientY; }
   }, { passive: true });
   document.addEventListener('touchend', function (e) {
@@ -756,17 +845,17 @@
     if (Math.abs(dx) > 70 && Math.abs(dy) < 45) actions[dx < 0 ? 'next' : 'prev']();
   }, { passive: true });
   window.addEventListener('resize', function () {
-    if (ready && detectPhone() !== phone && !anyDlg() && !quick) render();
+    if (ready && detectPhone() !== phone && !busy()) render();
   });
   Store.onRemote = function (st) {
-    if (anyDlg() || quick) { pendingRemote = st; return; }
+    if (busy()) { pendingRemote = st; return; }
     S = st; render();
   };
 
   /* ================= boot ================= */
 
   setInterval(function () {
-    if (!ready || anyDlg() || quick) return;
+    if (!ready || busy()) return;
     render();
   }, 30000);
 
@@ -774,7 +863,7 @@
     if (document.visibilityState === 'hidden') { Store.flushNow(); return; }
     if (!ready) return;
     Store.refresh().then(function (st) {
-      if (st && !anyDlg() && !quick) { S = st; render(); } else if (!st && !anyDlg() && !quick) render();
+      if (st && !busy()) { S = st; render(); } else if (!st && !busy()) render();
     });
   });
   window.addEventListener('pagehide', function () { Store.flushNow(); });

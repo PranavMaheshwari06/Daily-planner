@@ -547,6 +547,121 @@ const cloudFor = (store, uid) => ({ use: async n => n === 'db' ? mkDb(store) : n
     d.window.close();
   });
 
+  /* pointer events: jsdom has no layout, so tests move the pointer by clientY and the app converts pixels to minutes (52px = 1 hour) */
+  const ptr = (w, type, el, y, kind) => {
+    const e = new w.MouseEvent(type, { bubbles: true, cancelable: true, clientX: 300, clientY: y, button: 0 });
+    Object.defineProperty(e, 'pointerId', { value: 7 }); Object.defineProperty(e, 'pointerType', { value: kind || 'mouse' });
+    el.dispatchEvent(e); return e;
+  };
+  const tileOf = (w, re) => $$(w, '.tile').find(t => re.test(t.textContent));
+  const timesOf = (el) => el.querySelector('.tm').textContent.split(' · ')[0];
+  function dragTile(w, el, from, to, kind) { ptr(w, 'pointerdown', el, from, kind); ptr(w, 'pointermove', el, (from + to) / 2, kind); ptr(w, 'pointermove', el, to, kind); ptr(w, 'pointerup', el, to, kind); }
+
+  await t('drag: move a tile, snaps to 15 min, repeating block changes that day only, undo restores it', async () => {
+    const d = boot({ claude: cloudFor(fixtureStore('d1'), 'd1') }); await wait(150); const w = d.window;
+    let gym = tileOf(w, /Gym session/);
+    assert.strictEqual(timesOf(gym), '08:00 – 09:00'); assert.ok(gym.querySelector('.rz-t') && gym.querySelector('.rz-b'));
+    const body = gym.querySelector('.tbody');
+    ptr(w, 'pointerdown', body, 100); ptr(w, 'pointermove', body, 101);
+    assert.ok(!gym.classList.contains('drag'), 'a 1px wobble is not a drag');
+    ptr(w, 'pointermove', body, 100 + 78);                                           // 78px = 90 minutes
+    assert.ok(gym.classList.contains('drag'));
+    assert.strictEqual(timesOf(gym), '09:30 – 10:30', 'live preview while dragging');
+    assert.strictEqual(gym.style.top, (570 * 52 / 60 + 2) + 'px');
+    ptr(w, 'pointerup', body, 100 + 78);
+    gym = tileOf(w, /Gym session/);
+    assert.strictEqual(timesOf(gym), '09:30 – 10:30'); assert.ok(!gym.classList.contains('drag'));
+    assert.match($(w, '#toast').textContent, /Moved to 09:30 – 10:30, this day only/); assert.ok($(w, '#toast [data-a="undo"]'));
+    const B = w.__planner.S.blocks;
+    assert.strictEqual(B.length, 4); assert.strictEqual(B.find(b => b.id === 'bg').ex.length, 1);   // Fri 13 left the series
+    assert.strictEqual(B.find(b => b.id === 'bg').start, 480);                                       // the series itself is untouched
+    await wait(80);                                                                  // clicks right after a drop are ignored
+    click(w, $(w, '#toast [data-a="undo"]'));
+    gym = tileOf(w, /Gym session/);
+    assert.strictEqual(timesOf(gym), '08:00 – 09:00'); assert.strictEqual(w.__planner.S.blocks.length, 3);
+    assert.strictEqual($(w, '#toast').textContent, '');
+    d.window.close();
+  });
+
+  await t('drag: resize from the bottom and the top edge, clamped to the day and 15 minutes', async () => {
+    const d = boot({ claude: cloudFor(fixtureStore('d2'), 'd2') }); await wait(150); const w = d.window;
+    let german = tileOf(w, /German/);
+    dragTile(w, german.querySelector('.rz-b'), 500, 530);                             // 30px = 35 min -> +30 min
+    german = tileOf(w, /German/); assert.strictEqual(timesOf(german), '15:00 – 16:30');
+    assert.match($(w, '#toast').textContent, /Now 15:00 – 16:30/);
+    let study = tileOf(w, /Study/);
+    dragTile(w, study.querySelector('.rz-t'), 500, 552);                              // +60 min on the top edge
+    study = tileOf(w, /Study/); assert.strictEqual(timesOf(study), '10:00 – 12:00');
+    dragTile(w, study.querySelector('.rz-t'), 500, 5000);                             // far down: leaves 15 minutes
+    study = tileOf(w, /Study/); assert.strictEqual(timesOf(study), '11:45 – 12:00');
+    dragTile(w, study.querySelector('.rz-b'), 500, 9000);                             // far down: ends at 24:00
+    study = tileOf(w, /Study/); assert.strictEqual(timesOf(study), '11:45 – 24:00');
+    dragTile(w, study.querySelector('.tbody'), 500, -9000);                           // far up: starts at 00:00, keeps its length
+    study = tileOf(w, /Study/); assert.strictEqual(timesOf(study), '00:00 – 12:15');
+    d.window.close();
+  });
+
+  await t('drag: marks follow, the click that ends a drag opens nothing, a plain click still edits', async () => {
+    const d = boot({ claude: cloudFor(fixtureStore('d3'), 'd3') }); await wait(150); const w = d.window;
+    click(w, tileOf(w, /Gym session/).querySelector('.chk'));                        // Fri 13 Gym ended 09:00: now marked not done
+    assert.ok(tileOf(w, /Gym session/).classList.contains('skip'));
+    const body = tileOf(w, /Gym session/).querySelector('.tbody');
+    dragTile(w, body, 100, 152);                                                       // +60 min
+    click(w, tileOf(w, /Gym session/).querySelector('.tbody'));                       // the browser's click right after pointerup
+    assert.ok(!$(w, '.dlg'), 'no editor after a drag');
+    const g = tileOf(w, /Gym session/); assert.strictEqual(timesOf(g), '09:00 – 10:00'); assert.ok(g.classList.contains('skip'));
+    await wait(80);
+    click(w, g.querySelector('.tbody')); assert.ok($(w, '.dlg')); assert.strictEqual($(w, '#f-title').value, 'Gym session');
+    click(w, $(w, '[data-a="d-cancel"]'));
+    // pressing on the check circle never starts a drag
+    const chk = tileOf(w, /Study/).querySelector('.chk'); ptr(w, 'pointerdown', chk, 100); ptr(w, 'pointermove', chk, 300); ptr(w, 'pointerup', chk, 300);
+    assert.strictEqual(timesOf(tileOf(w, /Study/)), '09:00 – 12:00');
+    // dropping where it started changes nothing and leaves no toast
+    $(w, '#toast').innerHTML = '';
+    dragTile(w, tileOf(w, /German/).querySelector('.tbody'), 100, 105);                // 5px is under half a 15-minute step
+    assert.strictEqual(timesOf(tileOf(w, /German/)), '15:00 – 16:00'); assert.strictEqual($(w, '#toast').textContent, '');
+    d.window.close();
+  });
+
+  await t('drag: Escape cancels, touch moves after a long press only, handles work at once', async () => {
+    const d = boot({ claude: cloudFor(fixtureStore('d4'), 'd4') }); await wait(150); const w = d.window;
+    let body = tileOf(w, /German/).querySelector('.tbody');
+    ptr(w, 'pointerdown', body, 100); ptr(w, 'pointermove', body, 160);
+    assert.notStrictEqual(timesOf(tileOf(w, /German/)), '15:00 – 16:00');
+    w.document.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    assert.strictEqual(timesOf(tileOf(w, /German/)), '15:00 – 16:00');
+    ptr(w, 'pointerup', body, 160); assert.strictEqual(w.__planner.S.blocks.length, 3);
+    // touch: moving at once is scrolling, not dragging
+    body = tileOf(w, /German/).querySelector('.tbody');
+    ptr(w, 'pointerdown', body, 100, 'touch'); ptr(w, 'pointermove', body, 200, 'touch'); ptr(w, 'pointerup', body, 200, 'touch');
+    await wait(450); assert.strictEqual(timesOf(tileOf(w, /German/)), '15:00 – 16:00'); assert.strictEqual(w.__planner.S.blocks.length, 3);
+    // touch: hold still for 350 ms, then drag
+    body = tileOf(w, /German/).querySelector('.tbody');
+    ptr(w, 'pointerdown', body, 100, 'touch'); await wait(400);
+    assert.ok(tileOf(w, /German/).classList.contains('drag'));
+    ptr(w, 'pointermove', body, 100 + 26, 'touch'); ptr(w, 'pointerup', body, 126, 'touch');   // 26px = 30 min
+    assert.strictEqual(timesOf(tileOf(w, /German/)), '15:30 – 16:30');
+    // touch on a resize handle needs no long press
+    const bot = tileOf(w, /German/).querySelector('.rz-b');
+    ptr(w, 'pointerdown', bot, 100, 'touch'); ptr(w, 'pointermove', bot, 126, 'touch'); ptr(w, 'pointerup', bot, 126, 'touch');
+    assert.strictEqual(timesOf(tileOf(w, /German/)), '15:30 – 17:00');
+    // the page does not scroll under a touch drag
+    ptr(w, 'pointerdown', tileOf(w, /German/).querySelector('.tbody'), 100, 'touch'); await wait(400);
+    const tm = new w.Event('touchmove', { bubbles: true, cancelable: true }); w.document.dispatchEvent(tm);
+    assert.ok(tm.defaultPrevented); ptr(w, 'pointercancel', w.document.body, 100, 'touch');
+    assert.ok(!tileOf(w, /German/).classList.contains('drag'));
+    d.window.close();
+  });
+
+  await t('drag: changes are saved to the cloud and appear on another device', async () => {
+    const shared = fixtureStore('d5'); const cl = cloudFor(shared, 'd5');
+    const A = boot({ claude: cl }); const B = boot({ claude: cl }); await wait(200);
+    dragTile(A.window, tileOf(A.window, /German/).querySelector('.rz-b'), 500, 552);
+    await wait(1800);
+    assert.strictEqual(timesOf(tileOf(B.window, /German/)), '15:00 – 17:00');
+    A.window.close(); B.window.close();
+  });
+
   console.log('\n' + pass + ' passed; page errors:', errors.length, errors.slice(0, 3));
   process.exit(process.exitCode || 0);
 })();

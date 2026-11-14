@@ -350,6 +350,86 @@ t('monthSummary follows clicks and the clock', () => {
   assert.strictEqual(m.weeks[2].upcoming, 0);
 });
 
+t('dragTimes: move snaps to 15 minutes and stays inside the day', () => {
+  const m = (a, b, d) => JSON.stringify(L.dragTimes(a, b, 'move', d));
+  assert.strictEqual(m(480, 540, 0), JSON.stringify({ start: 480, end: 540 }));
+  assert.strictEqual(m(480, 540, 90), JSON.stringify({ start: 570, end: 630 }));
+  assert.strictEqual(m(480, 540, 7), JSON.stringify({ start: 480, end: 540 }));          // under half a step: no change
+  assert.strictEqual(m(480, 540, 8), JSON.stringify({ start: 495, end: 555 }));
+  assert.strictEqual(m(480, 540, -59), JSON.stringify({ start: 420, end: 480 }));
+  assert.strictEqual(m(480, 540, -9999), JSON.stringify({ start: 0, end: 60 }));        // stops at 00:00 and keeps its length
+  assert.strictEqual(m(480, 660, 9999), JSON.stringify({ start: 1260, end: 1440 }));    // stops at 24:00
+});
+
+t('dragTimes: resize from either edge, 15 minutes minimum', () => {
+  const b = (a, e, d) => JSON.stringify(L.dragTimes(a, e, 'bottom', d)), tp = (a, e, d) => JSON.stringify(L.dragTimes(a, e, 'top', d));
+  assert.strictEqual(b(540, 600, 30), JSON.stringify({ start: 540, end: 630 }));
+  assert.strictEqual(b(540, 600, -9999), JSON.stringify({ start: 540, end: 555 }));
+  assert.strictEqual(b(540, 600, 9999), JSON.stringify({ start: 540, end: 1440 }));
+  assert.strictEqual(tp(540, 600, -30), JSON.stringify({ start: 510, end: 600 }));
+  assert.strictEqual(tp(540, 600, 9999), JSON.stringify({ start: 585, end: 600 }));
+  assert.strictEqual(tp(540, 600, -9999), JSON.stringify({ start: 0, end: 600 }));
+});
+
+t('retimeBlock: a one-off changes in place and keeps its marks', () => {
+  const s = L.newState();
+  const id = L.saveBlock(s, { id: null, date: '2026-11-13', title: 'Once', tag: 'gym', start: 480, end: 540, habit: 'h-gym', repeat: 'once' }).id;
+  L.toggleOcc(s, L.occurrencesOn(s, '2026-11-13')[0], NOW);                     // skipped
+  const r = L.retimeBlock(s, '2026-11-13|' + id, 600, 690);
+  assert.ok(r.ok && !r.series);
+  const o = L.occurrencesOn(s, '2026-11-13')[0];
+  assert.strictEqual(JSON.stringify([o.id, o.start, o.end]), JSON.stringify([id, 600, 690]));
+  assert.strictEqual(L.occStatus(s, o, NOW), 'x');
+  assert.strictEqual(s.blocks.length, 1);
+});
+
+t('retimeBlock: a repeating block changes on that day only, marks follow', () => {
+  const s = base();
+  const gym = L.occurrencesOn(s, '2026-11-13')[0];
+  L.toggleOcc(s, gym, NOW);                                                     // Fri 13 skipped
+  const r = L.retimeBlock(s, gym.key, 570, 630);
+  assert.ok(r.ok && r.series);
+  const fri = L.occurrencesOn(s, '2026-11-13').filter(o => o.title === 'Gym session');
+  assert.strictEqual(fri.length, 1); assert.strictEqual(fri[0].start, 570); assert.strictEqual(fri[0].rep, 'once');
+  assert.strictEqual(L.occStatus(s, fri[0], NOW), 'x');                          // skip mark kept
+  const thu = L.occurrencesOn(s, '2026-11-12').filter(o => o.title === 'Gym session')[0], mon = L.occurrencesOn(s, '2026-11-16').filter(o => o.title === 'Gym session')[0];
+  assert.strictEqual(thu.start, 480); assert.strictEqual(mon.start, 480);        // other days untouched
+});
+
+t('retimeBlock: no change, bad times, unknown block', () => {
+  const s = base(), o = L.occurrencesOn(s, '2026-11-13')[0], n = s.blocks.length;
+  assert.ok(L.retimeBlock(s, o.key, o.start, o.end).same); assert.strictEqual(s.blocks.length, n);
+  assert.ok(L.retimeBlock(s, o.key, 600, 600).error);
+  assert.ok(L.retimeBlock(s, o.key, -15, 60).error);
+  assert.ok(L.retimeBlock(s, o.key, 1380, 1500).error);
+  assert.ok(L.retimeBlock(s, '2026-11-13|nope', 600, 660).error);
+  assert.strictEqual(s.blocks.length, n);                                         // failed attempts change nothing
+  assert.strictEqual(L.occurrencesOn(s, '2026-11-13')[0].start, 480);
+});
+
+t('copyBlock: one-off on another day, marks and series are not copied', () => {
+  const s = base(), gym = L.occurrencesOn(s, '2026-11-13')[0];
+  L.toggleOcc(s, gym, NOW);                                                       // skipped on the 13th
+  const f = { title: gym.title, tag: gym.tag, start: gym.start, end: gym.end, habit: gym.habit, notes: 'bring towel' };
+  const r = L.copyBlock(s, f, '2026-11-14', '2026-11-13');                        // a Saturday: the series does not run there
+  assert.ok(r.ok);
+  const c = L.occurrencesOn(s, '2026-11-14');
+  assert.strictEqual(c.length, 1); assert.strictEqual(c[0].title, 'Gym session'); assert.strictEqual(c[0].rep, 'once');
+  assert.strictEqual(c[0].notes, 'bring towel'); assert.strictEqual(c[0].habit, 'h-gym'); assert.strictEqual(L.occStatus(s, c[0], at('2026-11-15', 12)), 'd');
+  assert.strictEqual(L.occurrencesOn(s, '2026-11-21').length, 0);                  // a one-off, no repeat
+  assert.strictEqual(L.occStatus(s, L.occurrencesOn(s, '2026-11-13')[0], NOW), 'x');   // original untouched
+});
+
+t('copyBlock: validates the date and the block', () => {
+  const s = base(), n = s.blocks.length, f = { title: 'x', tag: 'gym', start: 600, end: 660, habit: null, notes: '' };
+  assert.match(L.copyBlock(s, f, '2026-11-13', '2026-11-13').error, /different day/);
+  ['', 'tomorrow', '2026-02-30', '2026-13-01', '13/11/2026', null, undefined].forEach(d => assert.ok(L.copyBlock(s, f, d, '2026-11-13').error, String(d)));
+  assert.ok(L.copyBlock(s, { ...f, title: ' ' }, '2026-11-20', '2026-11-13').error);
+  assert.ok(L.copyBlock(s, { ...f, start: 1380, end: 1500 }, '2026-11-20', '2026-11-13').error);
+  assert.strictEqual(s.blocks.length, n);
+  assert.ok(L.validDate('2028-02-29')); assert.ok(!L.validDate('2026-02-29'));
+});
+
 t('ISO week numbers', () => {
   assert.strictEqual(L.isoWeek('2026-11-13'), 46); assert.strictEqual(L.isoWeek('2026-11-09'), 46); assert.strictEqual(L.isoWeek('2026-11-15'), 46);
   assert.strictEqual(L.isoWeek('2026-11-02'), 45); assert.strictEqual(L.isoWeek('2026-01-01'), 1); assert.strictEqual(L.isoWeek('2026-12-31'), 53);

@@ -411,6 +411,39 @@
     rekeyMarks(state, function (k) { var p = k.split('|'); return (p[0] === 'h' && p[1] === H) ? null : k; });
   }
 
+  /* ---------- drag, copy ---------- */
+
+  /* New times for a block dragged by deltaMin minutes. mode: 'move' | 'top' | 'bottom' (which edge is dragged).
+     Snaps to 15 minutes, stays inside the day, never shorter than 15 minutes. */
+  function dragTimes(start, end, mode, deltaMin) {
+    var d = Math.round(deltaMin / 15) * 15, len = end - start, s, e;
+    if (mode === 'top') { s = Math.min(Math.max(start + d, DAY_START), end - 15); return { start: s, end: end }; }
+    if (mode === 'bottom') { e = Math.min(Math.max(end + d, start + 15), DAY_END); return { start: start, end: e }; }
+    s = Math.min(Math.max(start + d, DAY_START), DAY_END - len);
+    return { start: s, end: s + len };
+  }
+
+  /* Change the times of one day's block (key from occurrencesOn). A repeating block changes on that day only;
+     its other days stay as they were. Done and skipped marks of the day move with it. */
+  function retimeBlock(state, key, start, end) {
+    var o = findOcc(state, key);
+    if (!o) return { error: 'That block no longer exists.' };
+    if (o.start === start && o.end === end) return { ok: true, same: true };
+    var r = saveBlock(state, { id: o.id, occDate: o.date, date: o.date, title: o.title, tag: o.tag, start: start, end: end,
+                               habit: o.habit, notes: o.notes, repeat: 'once' });
+    if (r.ok) r.series = o.rep === 'weekly';
+    return r;
+  }
+
+  function validDate(s) { return /^\d{4}-\d{2}-\d{2}$/.test(String(s)) && dk(parse(s)) === s; }
+
+  /* Copy a block's fields (title, tag, start, end, habit, notes) to another day as a one-off. Marks are not copied. */
+  function copyBlock(state, f, toDate, fromDate) {
+    if (!validDate(toDate)) return { error: 'Pick a date.' };
+    if (toDate === fromDate) return { error: 'Pick a different day.' };
+    return saveBlock(state, { id: null, date: toDate, title: f.title, tag: f.tag, start: f.start, end: f.end, habit: f.habit, notes: f.notes, repeat: 'once' });
+  }
+
   /* ---------- tags ---------- */
 
   function tagName(v) { return String(v == null ? '' : v).trim().slice(0, 24); }
@@ -488,7 +521,7 @@
     DAY_START: DAY_START, DAY_END: DAY_END, TAGS: TAGS, PALETTE: PALETTE,
     pad: pad, dk: dk, parse: parse, addDays: addDays, wd: wd, weekStart: weekStart, isoWeek: isoWeek, fmtMin: fmtMin, endAt: endAt,
     tagById: tagById, tagList: tagList, habitChk: habitChk, normHex: normHex, contrast: contrast,
-    addTag: addTag, updateTag: updateTag, deleteTag: deleteTag,
+    addTag: addTag, updateTag: updateTag, deleteTag: deleteTag, dragTimes: dragTimes, retimeBlock: retimeBlock, copyBlock: copyBlock, validDate: validDate,
     newState: newState, occurrencesOn: occurrencesOn, findOcc: findOcc, layoutDay: layoutDay,
     occStatus: occStatus, toggleOcc: toggleOcc, habitDay: habitDay, toggleHabit: toggleHabit,
     streak: streak, monthStats: monthStats, rangeStats: rangeStats, weekStats: weekStats, monthSummary: monthSummary, saveBlock: saveBlock, deleteBlock: deleteBlock,

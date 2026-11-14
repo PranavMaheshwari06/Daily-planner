@@ -96,7 +96,17 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .hr:focus-visible .ghost{display:flex}
 .ov{position:absolute;left:72px;right:16px;top:0;bottom:0;pointer-events:none}
 .tile{position:absolute;pointer-events:auto;border-radius:10px;display:flex;align-items:flex-start;gap:12px;padding:8px 12px;overflow:hidden;animation:pop .28s var(--ease) both}
+.tile{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 .tile.short{padding:0 12px;align-items:center}
+.tile.drag{z-index:6;box-shadow:0 10px 28px rgba(0,0,0,.65);transform:scale(1.015);animation:none;transition:none}
+body.dragging,body.dragging *{cursor:grabbing!important;-webkit-user-select:none;user-select:none}
+.rz{position:absolute;left:0;right:0;height:min(12px,34%);touch-action:none;z-index:2}
+.rz-t{top:0}.rz-b{bottom:0}
+.rz::after{content:"";position:absolute;left:50%;width:28px;height:4px;margin-left:-14px;border-radius:2px;background:currentColor;opacity:0;transition:opacity .15s var(--ease)}
+.rz-t::after{top:3px}.rz-b::after{bottom:3px}
+@media (hover:hover){.rz{cursor:ns-resize}.tile:hover .rz::after{opacity:.45}.tile .tbody{cursor:grab}}
+@media (hover:none){.rz::after{opacity:.3}}
+.tile.short .rz::after{display:none}
 .tile:not(.short) .tbody{justify-content:flex-start;padding-top:2px}
 .tile:not(.short) .pill{align-self:flex-start;margin-top:2px}
 .tile.skip{background:var(--card)!important;color:var(--t2)!important;box-shadow:inset 0 0 0 1px var(--line)}
@@ -194,6 +204,12 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .flash{animation:flash 1.2s var(--ease)}
 @keyframes flash{0%{box-shadow:0 0 0 2px var(--blue)}100%{box-shadow:0 0 0 2px transparent}}
 @media (max-width:760px){.mchip{min-height:44px}}
+
+/* toast */
+#toast{position:fixed;left:0;right:0;bottom:calc(24px + env(safe-area-inset-bottom));display:flex;justify-content:center;pointer-events:none;z-index:60}
+.toast{pointer-events:auto;display:flex;align-items:center;gap:16px;max-width:min(480px,calc(100% - 24px));background:var(--elev2);color:var(--text);border-radius:14px;padding:6px 8px 6px 16px;font-size:14px;box-shadow:0 10px 30px rgba(0,0,0,.6);animation:pop .22s var(--ease) both}
+.toast button{height:36px;padding:0 14px;border:0;border-radius:10px;background:transparent;color:var(--blue);font-weight:600}
+@media (max-width:760px){#toast{bottom:calc(96px + env(safe-area-inset-bottom))}}
 
 /* phone habit cards */
 .hcard{background:var(--card);border-radius:20px;padding:16px 16px 14px}
