@@ -6,8 +6,15 @@ let pass = 0; const errors = [];
 const t = async (n, f) => { try { await f(); pass++; console.log('ok  ', n); } catch (e) { console.log('FAIL', n, '\n    ', e.stack.split('\n').slice(0,3).join('\n     ')); process.exitCode = 1; } };
 const wait = ms => new Promise(r => setTimeout(r, ms));
 
+const SUBS = new WeakMap();
 function mkDb(store) {
-  return { doc: p => ({ get: async () => ({ exists: p in store, data: () => store[p] && JSON.parse(JSON.stringify(store[p])) }), set: async o => { store[p] = JSON.parse(JSON.stringify(o)); } }) };
+  const subs = SUBS.get(store) || SUBS.set(store, {}).get(store);
+  const clone = o => o && JSON.parse(JSON.stringify(o));
+  return { doc: p => ({
+    get: async () => ({ exists: p in store, data: () => clone(store[p]) }),
+    set: async o => { store[p] = clone(o); (subs[p] || []).slice().forEach(f => setTimeout(() => f({ exists: true, data: () => clone(store[p]) }), 0)); },
+    onSnapshot: cb => { (subs[p] = subs[p] || []).push(cb); setTimeout(() => cb({ exists: p in store, data: () => clone(store[p]) }), 0); return () => { subs[p] = subs[p].filter(f => f !== cb); }; }
+  }) };
 }
 function boot(opts) {
   const vc = new VirtualConsole(); vc.on('jsdomError', e => errors.push(e.message)); vc.on('error', m => errors.push(String(m)));
@@ -17,6 +24,7 @@ function boot(opts) {
       class FD extends RD { constructor(...a) { if (a.length === 0) super(FIXED + (w.__off || 0)); else super(...a); } static now() { return FIXED + (w.__off || 0); } }
       w.Date = FD;
       w.scrollTo = () => {};
+      if (opts.width) Object.defineProperty(w, 'innerWidth', { value: opts.width, configurable: true });
       if (opts.claude) w.claude = opts.claude;
     } });
 }
@@ -62,7 +70,7 @@ function setSel(w, el, v) { el.value = v; el.dispatchEvent(new w.Event('change',
     click(w, $(w, '[data-a="new"]'));
     typeIn(w, $(w, '#f-title'), 'Gym session');
     click(w, $(w, '.dlg .chip[data-t="gym"]'));
-    assert.match($(w, '.hbar').textContent, /Count toward the Gym habit/);
+    assert.match($(w, '.hbar').textContent, /Count toward Gym/);
     setSel(w, $(w, '#f-start'), '1020'); setSel(w, $(w, '#f-end'), '1080');
     click(w, $(w, '[data-a="d-rep"][data-r="weekdays"]'));
     click(w, $(w, '[data-a="d-save"]'));
@@ -213,6 +221,59 @@ function setSel(w, el, v) { el.value = v; el.dispatchEvent(new w.Event('change',
     const so = { use: async n => n === 'user' ? { id: async () => null } : mkDb({}) };
     const d = boot({ claude: so }); await wait(100);
     assert.ok($(d.window, '.grid')); d.window.close();
+  });
+
+
+  await t('live sync: edit on device A appears on device B', async () => {
+    const shared = {}; const cl = { use: async n => n === 'db' ? mkDb(shared) : n === 'user' ? { id: async () => 'u9' } : { save: async () => {} } };
+    const A = boot({ claude: cl }); const B = boot({ claude: cl }); await wait(150);
+    assert.strictEqual($$(B.window, '.tile').length, 0);
+    click(A.window, $(A.window, '.hr[data-m="600"]')); typeIn(A.window, $(A.window, '.qin'), 'From phone'); click(A.window, $(A.window, '[data-a="q-add"]'));
+    await wait(1600);
+    assert.ok(shared['data/users/u9/core'].blocks.length === 1);
+    assert.strictEqual($$(B.window, '.tile').length, 1);
+    assert.match($(B.window, '.tile').textContent, /From phone/);
+    // and back: B edits (skip tile after it ended), A sees it, no echo loop
+    click(B.window, $(B.window, '.tile .chk')); await wait(1600);
+    assert.strictEqual($$(A.window, '.tile.skip').length, 1);
+    A.window.close(); B.window.close();
+  });
+
+  await t('remote change waits while a dialog is open', async () => {
+    const shared = {}; const cl = { use: async n => n === 'db' ? mkDb(shared) : n === 'user' ? { id: async () => 'u8' } : { save: async () => {} } };
+    const A = boot({ claude: cl }); const B = boot({ claude: cl }); await wait(150);
+    click(B.window, $(B.window, '[data-a="new"]'));
+    typeIn(B.window, $(B.window, '#f-title'), 'Typing in B');
+    click(A.window, $(A.window, '.hr[data-m="660"]')); typeIn(A.window, $(A.window, '.qin'), 'Meanwhile in A'); click(A.window, $(A.window, '[data-a="q-add"]'));
+    await wait(1600);
+    assert.strictEqual($(B.window, '#f-title').value, 'Typing in B');   // not clobbered
+    click(B.window, $(B.window, '[data-a="d-cancel"]'));
+    await wait(50);
+    assert.strictEqual($$(B.window, '.tile').length, 1);                 // applied after closing
+    A.window.close(); B.window.close();
+  });
+
+  await t('red banner when cloud was expected but unavailable; none for standalone', async () => {
+    const bad = { use: async () => { throw new Error('nope'); } };
+    const d = boot({ claude: bad }); await wait(100);
+    assert.match($(d.window, '.banner').textContent, /Not syncing/);
+    const s = boot({}); await wait(80);
+    assert.ok(!$(s.window, '.banner')); d.window.close(); s.window.close();
+  });
+
+  await t('phone layout: week strip, tab bar, fab, month toggle, sheet', async () => {
+    const d = boot({ width: 390 }); await wait(100); const p = d.window;
+    assert.ok($(p, '.wkstrip')); assert.strictEqual($$(p, '.wkd').length, 7); assert.ok($(p, '.tabbar')); assert.ok($(p, '.fab'));
+    assert.ok(!$(p, '.side'));
+    click(p, $$(p, '.wkd')[0]); assert.match($(p, '.ph-title .d1').textContent, /Monday/);
+    click(p, $(p, '[data-a="cal-toggle"]')); assert.ok($(p, '.phcal')); assert.ok(!$(p, '.wkstrip'));
+    click(p, $$(p, '.phcal .cd')[20]); assert.ok($(p, '.wkstrip'));
+    click(p, $(p, '[data-a="new"]')); assert.ok($(p, '.dlg .grab')); assert.ok($(p, '#f-title'));
+    click(p, $(p, '[data-a="d-cancel"]'));
+    click(p, $$(p, '.tabbar button')[1]); assert.strictEqual($$(p, '.hcard').length, 5);
+    assert.strictEqual($$(p, '.hcard')[0].querySelectorAll('.wk button').length, 7);
+    click(p, $$(p, '.tabbar button')[2]); assert.ok($(p, '.dlg'));
+    d.window.close();
   });
 
   console.log('\n' + pass + ' passed; page errors:', errors.length, errors.slice(0, 3));

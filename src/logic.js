@@ -8,12 +8,12 @@
   var DAY_END = 1500;    // 01:00 the next morning
 
   var TAGS = [
-    { id: 'work',     name: 'Work',     fill: '#DCE8FF', text: '#12306B', box: '#2457D6' },
-    { id: 'study',    name: 'Study',    fill: '#E8E1FA', text: '#3A2477', box: '#5B3FC4' },
-    { id: 'gym',      name: 'Gym',      fill: '#D9F2E4', text: '#0F4A2B', box: '#1B8A4F' },
-    { id: 'german',   name: 'German',   fill: '#FFE9C7', text: '#6B3E00', box: '#B76B00' },
-    { id: 'jobs',     name: 'Jobs',     fill: '#FFE0E6', text: '#7A1530', box: '#C2305A' },
-    { id: 'personal', name: 'Personal', fill: '#ECEEF2', text: '#3A4150', box: '#5F6877' }
+    { id: 'work',     name: 'Work',     fill: '#0F2A4D', text: '#A9D0FF', box: '#0A84FF', chk: '#FFFFFF' },
+    { id: 'study',    name: 'Study',    fill: '#2B1840', text: '#E2BCFA', box: '#BF5AF2', chk: '#FFFFFF' },
+    { id: 'gym',      name: 'Gym',      fill: '#0F3320', text: '#8FE8AC', box: '#30D158', chk: '#06240F' },
+    { id: 'german',   name: 'German',   fill: '#3A2506', text: '#FFC978', box: '#FF9F0A', chk: '#2B1900' },
+    { id: 'jobs',     name: 'Jobs',     fill: '#3F0F1A', text: '#FFA3B5', box: '#FF375F', chk: '#FFFFFF' },
+    { id: 'personal', name: 'Personal', fill: '#242427', text: '#D1D1D6', box: '#8E8E93', chk: '#111111' }
   ];
   var HABIT_COLORS = TAGS.map(function (t) { return t.box; });
 
@@ -27,16 +27,17 @@
   function uid() { return Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-3); }
   function endAt(date, endMin) { var d = parse(date); d.setHours(0, endMin, 0, 0); return d; }
   function tagById(id) { for (var i = 0; i < TAGS.length; i++) if (TAGS[i].id === id) return TAGS[i]; return TAGS[TAGS.length - 1]; }
+  function habitChk(color) { for (var i = 0; i < TAGS.length; i++) if (TAGS[i].box === color) return TAGS[i].chk; return '#FFFFFF'; }
 
   function newState() {
     return {
       v: 1,
       habits: [
-        { id: 'h-gym', name: 'Gym', color: '#1B8A4F' },
-        { id: 'h-study', name: 'Study', color: '#5B3FC4' },
-        { id: 'h-german', name: 'German', color: '#B76B00' },
-        { id: 'h-jobs', name: 'Applied to 5 jobs', color: '#C2305A' },
-        { id: 'h-sleep', name: 'Sleep before 23:00', color: '#5F6877' }
+        { id: 'h-gym', name: 'Gym', color: '#30D158' },
+        { id: 'h-study', name: 'Study', color: '#BF5AF2' },
+        { id: 'h-german', name: 'German', color: '#FF9F0A' },
+        { id: 'h-jobs', name: 'Applied to 5 jobs', color: '#FF375F' },
+        { id: 'h-sleep', name: 'Sleep before 23:00', color: '#8E8E93' }
       ],
       tagHabit: { gym: 'h-gym', study: 'h-study', german: 'h-german', jobs: 'h-jobs' },
       blocks: [],
@@ -327,7 +328,7 @@
 
   g.PlannerLogic = {
     DAY_START: DAY_START, DAY_END: DAY_END, TAGS: TAGS, HABIT_COLORS: HABIT_COLORS,
-    pad: pad, dk: dk, parse: parse, addDays: addDays, wd: wd, weekStart: weekStart, fmtMin: fmtMin, endAt: endAt, tagById: tagById,
+    pad: pad, dk: dk, parse: parse, addDays: addDays, wd: wd, weekStart: weekStart, fmtMin: fmtMin, endAt: endAt, tagById: tagById, habitChk: habitChk,
     newState: newState, occurrencesOn: occurrencesOn, findOcc: findOcc, layoutDay: layoutDay,
     occStatus: occStatus, toggleOcc: toggleOcc, habitDay: habitDay, toggleHabit: toggleHabit,
     streak: streak, monthStats: monthStats, saveBlock: saveBlock, deleteBlock: deleteBlock,
