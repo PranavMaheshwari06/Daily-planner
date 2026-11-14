@@ -7,15 +7,17 @@
   var DAY_START = 0;     // 00:00
   var DAY_END = 1440;    // 24:00. A block never crosses midnight.
 
+  /* Starting tags. Tags live in state.tags (id, name, one colour); everything else is derived from the colour. */
   var TAGS = [
-    { id: 'work',     name: 'Work',     fill: '#0F2A4D', text: '#A9D0FF', box: '#0A84FF', chk: '#FFFFFF' },
-    { id: 'study',    name: 'Study',    fill: '#2B1840', text: '#E2BCFA', box: '#BF5AF2', chk: '#FFFFFF' },
-    { id: 'gym',      name: 'Gym',      fill: '#0F3320', text: '#8FE8AC', box: '#30D158', chk: '#06240F' },
-    { id: 'german',   name: 'German',   fill: '#3A2506', text: '#FFC978', box: '#FF9F0A', chk: '#2B1900' },
-    { id: 'jobs',     name: 'Jobs',     fill: '#3F0F1A', text: '#FFA3B5', box: '#FF375F', chk: '#FFFFFF' },
-    { id: 'personal', name: 'Personal', fill: '#242427', text: '#D1D1D6', box: '#8E8E93', chk: '#111111' }
+    { id: 'work',     name: 'Work',     color: '#0A84FF' },
+    { id: 'study',    name: 'Study',    color: '#BF5AF2' },
+    { id: 'gym',      name: 'Gym',      color: '#30D158' },
+    { id: 'german',   name: 'German',   color: '#FF9F0A' },
+    { id: 'jobs',     name: 'Jobs',     color: '#FF375F' },
+    { id: 'personal', name: 'Personal', color: '#8E8E93' }
   ];
-  var HABIT_COLORS = TAGS.map(function (t) { return t.box; });
+  var PALETTE = ['#FF453A', '#FF9F0A', '#FFD60A', '#A4E34F', '#30D158', '#63E6E2', '#40C8E0', '#64D2FF',
+                 '#0A84FF', '#5E5CE6', '#BF5AF2', '#FF2D92', '#FF375F', '#AC8E68', '#8E8E93'];
 
   function pad(n) { return String(n).padStart(2, '0'); }
   function dk(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
@@ -26,8 +28,43 @@
   function fmtMin(m) { return m === 1440 ? '24:00' : pad(Math.floor(m / 60) % 24) + ':' + pad(m % 60); }
   function uid() { return Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-3); }
   function endAt(date, endMin) { var d = parse(date); d.setHours(0, endMin, 0, 0); return d; }
-  function tagById(id) { for (var i = 0; i < TAGS.length; i++) if (TAGS[i].id === id) return TAGS[i]; return TAGS[TAGS.length - 1]; }
-  function habitChk(color) { for (var i = 0; i < TAGS.length; i++) if (TAGS[i].box === color) return TAGS[i].chk; return '#FFFFFF'; }
+
+  /* ---------- colours ---------- */
+
+  /* '#abc', 'abc', '#AABBCC' -> '#AABBCC'; anything else -> null */
+  function normHex(v) {
+    var m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(String(v == null ? '' : v).trim());
+    if (!m) return null;
+    var h = m[1];
+    if (h.length === 3) h = h.charAt(0) + h.charAt(0) + h.charAt(1) + h.charAt(1) + h.charAt(2) + h.charAt(2);
+    return '#' + h.toUpperCase();
+  }
+  function rgbOf(c) { var n = parseInt(c.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
+  function mix(a, b, t) {        // t = share of b, 0..1
+    var x = rgbOf(a), y = rgbOf(b);
+    return '#' + [0, 1, 2].map(function (i) { return pad(Math.round(x[i] + (y[i] - x[i]) * t).toString(16)).toUpperCase(); }).join('');
+  }
+  function lum(c) {
+    var v = rgbOf(c).map(function (u) { u /= 255; return u <= 0.03928 ? u / 12.92 : Math.pow((u + 0.055) / 1.055, 2.4); });
+    return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2];
+  }
+  function contrast(a, b) { var x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); }
+  /* Colour of a check mark drawn on a disc of this colour: white unless the disc is too light for it. */
+  function habitChk(color) { return contrast('#FFFFFF', color) >= 3 ? '#FFFFFF' : '#111111'; }
+  /* Everything a tile needs, from the one colour the user picked. Text on the tile fill always has 4.5:1 contrast. */
+  function derive(tag) {
+    var fill = mix(tag.color, '#000000', 0.72), t = 0.65, text = mix(tag.color, '#FFFFFF', t);
+    while (contrast(text, fill) < 4.5 && t < 1) { t = Math.min(1, t + 0.05); text = mix(tag.color, '#FFFFFF', t); }
+    return { id: tag.id, name: tag.name, color: tag.color, box: tag.color, fill: fill, text: text, chk: habitChk(tag.color) };
+  }
+  function tagList(state) { return state.tags.map(derive); }
+  /* Unknown or deleted ids fall back to Personal, else the last tag. */
+  function tagById(state, id) {
+    var list = state.tags, i;
+    for (i = 0; i < list.length; i++) if (list[i].id === id) return derive(list[i]);
+    for (i = 0; i < list.length; i++) if (list[i].id === 'personal') return derive(list[i]);
+    return derive(list.length ? list[list.length - 1] : TAGS[TAGS.length - 1]);
+  }
 
   function newState() {
     return {
@@ -39,6 +76,7 @@
         { id: 'h-jobs', name: 'Applied to 5 jobs', color: '#FF375F' },
         { id: 'h-sleep', name: 'Sleep before 23:00', color: '#8E8E93' }
       ],
+      tags: TAGS.map(function (t) { return { id: t.id, name: t.name, color: t.color }; }),
       tagHabit: { gym: 'h-gym', study: 'h-study', german: 'h-german', jobs: 'h-jobs' },
       blocks: [],
       marks: {},
@@ -198,7 +236,7 @@
     state.marks = next;
   }
 
-  function clean(e) {
+  function clean(state, e) {
     var title = String(e.title || '').trim();
     var start = +e.start, end = +e.end;
     if (!title) return { error: 'Give the block a title.' };
@@ -206,7 +244,7 @@
     if (end <= start) return { error: 'End must be after start.' };
     return {
       title: title, start: start, end: end,
-      tag: tagById(e.tag).id, habit: e.habit || null, notes: String(e.notes || '').trim()
+      tag: tagById(state, e.tag).id, habit: e.habit || null, notes: String(e.notes || '').trim()
     };
   }
 
@@ -214,7 +252,7 @@
 
   /* e: { id|null, occDate, date, title, tag, start, end, habit, notes, repeat: once|weekly|weekdays } */
   function saveBlock(state, e) {
-    var c = clean(e);
+    var c = clean(state, e);
     if (c.error) return c;
     var b = e.id ? state.blocks.filter(function (x) { return x.id === e.id; })[0] : null;
 
@@ -302,17 +340,63 @@
     rekeyMarks(state, function (k) { var p = k.split('|'); return (p[0] === 'h' && p[1] === H) ? null : k; });
   }
 
+  /* ---------- tags ---------- */
+
+  function tagName(v) { return String(v == null ? '' : v).trim().slice(0, 24); }
+
+  function addTag(state, name, color) {
+    var n = tagName(name), c = normHex(color);
+    if (!n) return { error: 'Give the tag a name.' };
+    if (!c) return { error: 'Use a hex colour like #0A84FF.' };
+    var id = 't-' + uid();
+    state.tags.push({ id: id, name: n, color: c });
+    return { ok: true, id: id };
+  }
+
+  /* patch: { name?, color? } */
+  function updateTag(state, id, patch) {
+    var t = state.tags.filter(function (x) { return x.id === id; })[0];
+    if (!t) return { error: 'No such tag.' };
+    if ('name' in patch) { var n = tagName(patch.name); if (!n) return { error: 'Give the tag a name.' }; t.name = n; }
+    if ('color' in patch) { var c = normHex(patch.color); if (!c) return { error: 'Use a hex colour like #0A84FF.' }; t.color = c; }
+    return { ok: true };
+  }
+
+  /* Blocks that used the tag move to Personal (or the last tag left). At least one tag always stays. */
+  function deleteTag(state, id) {
+    if (!state.tags.some(function (t) { return t.id === id; })) return { error: 'No such tag.' };
+    if (state.tags.length < 2) return { error: 'Keep at least one tag.' };
+    state.tags = state.tags.filter(function (t) { return t.id !== id; });
+    var to = tagById(state, 'personal').id;
+    state.blocks.forEach(function (b) { if (b.tag === id) b.tag = to; });
+    state.hiddenTags = state.hiddenTags.filter(function (t) { return t !== id; });
+    delete state.tagHabit[id];
+    return { ok: true, movedTo: to };
+  }
+
+  function normTags(raw) {
+    var seen = {}, out = [];
+    (Array.isArray(raw) ? raw : []).forEach(function (t) {
+      if (!t || !t.id || seen[t.id]) return;
+      seen[t.id] = 1;
+      out.push({ id: String(t.id), name: tagName(t.name) || 'Tag', color: normHex(t.color) || '#8E8E93' });
+    });
+    return out.length ? out : TAGS.map(function (t) { return { id: t.id, name: t.name, color: t.color }; });
+  }
+
   /* ---------- import / export ---------- */
 
   function normalize(raw) {
     var s = raw && raw.state ? raw.state : raw;
     if (!s || typeof s !== 'object' || !Array.isArray(s.blocks) || !Array.isArray(s.habits)) return null;
     var out = newState();
+    out.tags = normTags(s.tags);
     out.habits = s.habits.filter(function (h) { return h && h.id && h.name; })
       .map(function (h) { return { id: String(h.id), name: String(h.name), color: String(h.color || '#5F6877') }; });
+    var known = {}; out.tags.forEach(function (t) { known[t.id] = 1; });
     out.tagHabit = {};
-    Object.keys(s.tagHabit || {}).forEach(function (t) { out.tagHabit[t] = s.tagHabit[t]; });
-    out.hiddenTags = Array.isArray(s.hiddenTags) ? s.hiddenTags.slice() : [];
+    Object.keys(s.tagHabit || {}).forEach(function (t) { if (known[t]) out.tagHabit[t] = s.tagHabit[t]; });
+    out.hiddenTags = Array.isArray(s.hiddenTags) ? s.hiddenTags.filter(function (t) { return known[t]; }) : [];
     out.marks = {};
     Object.keys(s.marks || {}).forEach(function (k) { if (s.marks[k] === 'd' || s.marks[k] === 'x') out.marks[k] = s.marks[k]; });
     out.blocks = s.blocks.filter(function (b) { return b && b.id && (b.rep === 'once' || b.rep === 'weekly'); })
@@ -320,7 +404,7 @@
         // Blocks saved before the 24-hour day could run past midnight (up to 01:00). Cut them at 24:00.
         var end = Math.min(+b.end, DAY_END), start = Math.max(+b.start, DAY_START);
         if (start >= end) start = Math.max(DAY_START, end - 15);
-        var o = { id: String(b.id), title: String(b.title || 'Untitled'), tag: tagById(b.tag).id,
+        var o = { id: String(b.id), title: String(b.title || 'Untitled'), tag: tagById(out, b.tag).id,
                   start: start, end: end, habit: b.habit || null, notes: String(b.notes || ''), rep: b.rep };
         if (b.rep === 'once') o.date = String(b.date);
         else { o.startDate = String(b.startDate); o.endDate = b.endDate || null; o.days = (b.days || []).map(Number); o.ex = (b.ex || []).slice(); }
@@ -330,8 +414,10 @@
   }
 
   g.PlannerLogic = {
-    DAY_START: DAY_START, DAY_END: DAY_END, TAGS: TAGS, HABIT_COLORS: HABIT_COLORS,
-    pad: pad, dk: dk, parse: parse, addDays: addDays, wd: wd, weekStart: weekStart, fmtMin: fmtMin, endAt: endAt, tagById: tagById, habitChk: habitChk,
+    DAY_START: DAY_START, DAY_END: DAY_END, TAGS: TAGS, PALETTE: PALETTE,
+    pad: pad, dk: dk, parse: parse, addDays: addDays, wd: wd, weekStart: weekStart, fmtMin: fmtMin, endAt: endAt,
+    tagById: tagById, tagList: tagList, habitChk: habitChk, normHex: normHex, contrast: contrast,
+    addTag: addTag, updateTag: updateTag, deleteTag: deleteTag,
     newState: newState, occurrencesOn: occurrencesOn, findOcc: findOcc, layoutDay: layoutDay,
     occStatus: occStatus, toggleOcc: toggleOcc, habitDay: habitDay, toggleHabit: toggleHabit,
     streak: streak, monthStats: monthStats, saveBlock: saveBlock, deleteBlock: deleteBlock,

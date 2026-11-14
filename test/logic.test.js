@@ -232,4 +232,106 @@ t('tracker click and block box always agree', () => {
   assert.strictEqual(L.habitDay(s, 'h-gym', '2026-11-13', NOW), 'done');
 });
 
+t('tags are data in state; the six starting tags keep their ids', () => {
+  const s = L.newState();
+  assert.strictEqual(JSON.stringify(s.tags.map(x => x.id)), JSON.stringify(['work', 'study', 'gym', 'german', 'jobs', 'personal']));
+  assert.ok(s.tags.every(x => /^#[0-9A-F]{6}$/.test(x.color) && x.name));
+  assert.strictEqual(L.tagById(s, 'gym').name, 'Gym');
+  assert.strictEqual(L.tagById(s, 'gone').id, 'personal');                  // unknown id falls back to Personal
+});
+
+t('saves from before custom tags are migrated: six tags, blocks keep their tag', () => {
+  const old = { app: 'planner', v: 1, state: { habits: [{ id: 'h-gym', name: 'Gym', color: '#30D158' }], tagHabit: { gym: 'h-gym' }, hiddenTags: ['study'], marks: {},
+    blocks: [{ id: 'b1', title: 'Gym', tag: 'gym', start: 480, end: 540, habit: 'h-gym', notes: '', rep: 'once', date: '2026-11-13' }] } };
+  const n = L.normalize(old);
+  assert.strictEqual(n.tags.length, 6);
+  assert.strictEqual(n.blocks[0].tag, 'gym');
+  assert.strictEqual(JSON.stringify(n.hiddenTags), JSON.stringify(['study']));
+  assert.strictEqual(n.tagHabit.gym, 'h-gym');
+});
+
+t('hex input: 3 and 6 digits, with or without #, rejects the rest', () => {
+  assert.strictEqual(L.normHex('#0a84ff'), '#0A84FF');
+  assert.strictEqual(L.normHex('0a84ff'), '#0A84FF');
+  assert.strictEqual(L.normHex(' #f0a '), '#FF00AA');
+  ['', '#12', '#12345', '#1234567', 'blue', '#GGGGGG', null, undefined].forEach(v => assert.strictEqual(L.normHex(v), null, String(v)));
+});
+
+t('derived tile colours are readable for any picked colour', () => {
+  const colors = ['#000000', '#FFFFFF', '#FFD60A', '#0A0A0A', '#8E8E93', '#222266', '#00FF00', '#FF0000', '#123456', '#FEDCBA'].concat(L.PALETTE);
+  for (let h = 0; h < 360; h += 15) for (const l of [20, 50, 80]) {            // a sweep of hues and lightnesses
+    const f = (n) => { const k = (n + h / 30) % 12, a = 0.8 * Math.min(l / 100, 1 - l / 100); return Math.round(255 * (l / 100 - a * Math.max(-1, Math.min(k - 3, 9 - k, 1)))); };
+    colors.push('#' + [f(0), f(8), f(4)].map(v => v.toString(16).padStart(2, '0')).join('').toUpperCase());
+  }
+  colors.forEach(c => {
+    const s = L.newState(); L.updateTag(s, 'work', { color: c });
+    const d = L.tagById(s, 'work');
+    assert.strictEqual(d.color, d.box); assert.strictEqual(d.color, c.toUpperCase());
+    assert.ok(L.contrast(d.text, d.fill) >= 4.5, c + ' text/fill ' + L.contrast(d.text, d.fill).toFixed(2));
+    assert.ok(L.contrast(d.chk, d.box) >= 3, c + ' check/box ' + L.contrast(d.chk, d.box).toFixed(2));
+  });
+});
+
+t('one colour gives the tile fill, text and check colours', () => {
+  const s = L.newState();
+  L.updateTag(s, 'work', { color: '#0A84FF' });
+  let d = L.tagById(s, 'work');
+  assert.strictEqual(d.fill, '#032547'); assert.strictEqual(d.text, '#A9D4FF'); assert.strictEqual(d.box, '#0A84FF'); assert.strictEqual(d.chk, '#FFFFFF');
+  L.updateTag(s, 'work', { color: '#30D158' });
+  d = L.tagById(s, 'work');
+  assert.strictEqual(d.fill, '#0D3B19'); assert.strictEqual(d.text, '#B7EFC5'); assert.strictEqual(d.chk, '#111111');          // light colour: dark check mark
+  assert.strictEqual(L.habitChk('#FFD60A'), '#111111'); assert.strictEqual(L.habitChk('#5E5CE6'), '#FFFFFF');
+});
+
+t('add, rename and recolour a tag', () => {
+  const s = L.newState();
+  assert.ok(L.addTag(s, '  Reading ', '12ab34').ok);
+  const t = s.tags[s.tags.length - 1];
+  assert.strictEqual(t.name, 'Reading'); assert.strictEqual(t.color, '#12AB34'); assert.ok(/^t-/.test(t.id));
+  assert.ok(L.updateTag(s, t.id, { name: 'Books' }).ok); assert.strictEqual(L.tagById(s, t.id).name, 'Books');
+  assert.ok(L.updateTag(s, t.id, { color: '#f00' }).ok); assert.strictEqual(L.tagById(s, t.id).color, '#FF0000');
+  assert.ok(L.updateTag(s, t.id, { name: '   ' }).error);                    // blank name rejected, old name kept
+  assert.ok(L.updateTag(s, t.id, { color: 'red' }).error);
+  assert.strictEqual(L.tagById(s, t.id).name, 'Books'); assert.strictEqual(L.tagById(s, t.id).color, '#FF0000');
+  assert.ok(L.addTag(s, '', '#FFFFFF').error); assert.ok(L.addTag(s, 'x', 'nope').error);
+  assert.strictEqual(L.addTag(s, 'x'.repeat(40), '#FFFFFF').ok && s.tags[s.tags.length - 1].name.length, 24);
+});
+
+t('a custom tag can be used by blocks, and survives export and import', () => {
+  const s = L.newState();
+  const id = L.addTag(s, 'Reading', '#12AB34').id;
+  const r = L.saveBlock(s, { id: null, date: '2026-11-13', title: 'Chapter 3', tag: id, start: 1200, end: 1260, repeat: 'once' });
+  assert.ok(r.ok); assert.strictEqual(L.occurrencesOn(s, '2026-11-13')[0].tag, id);
+  const back = L.normalize(JSON.parse(JSON.stringify({ app: 'planner', v: 1, state: s })));
+  assert.strictEqual(JSON.stringify(back.tags), JSON.stringify(s.tags));
+  assert.strictEqual(back.blocks[0].tag, id);
+});
+
+t('delete tag: blocks move to Personal, filter and habit link are cleaned, last tag stays', () => {
+  const s = base();
+  s.hiddenTags.push('gym');
+  const res = L.deleteTag(s, 'gym');
+  assert.ok(res.ok); assert.strictEqual(res.movedTo, 'personal');
+  assert.ok(!s.tags.some(x => x.id === 'gym'));
+  assert.ok(s.blocks.every(b => b.tag !== 'gym'));
+  assert.strictEqual(s.blocks[0].tag, 'personal'); assert.strictEqual(s.blocks[0].habit, 'h-gym');   // habit link untouched
+  assert.ok(!s.hiddenTags.includes('gym')); assert.ok(!('gym' in s.tagHabit));
+  assert.ok(L.deleteTag(s, 'nope').error);
+  // without Personal, the last tag left takes over
+  const u = L.newState(); L.deleteTag(u, 'personal');
+  L.saveBlock(u, { id: null, date: '2026-11-13', title: 'x', tag: 'jobs', start: 600, end: 660, repeat: 'once' });
+  assert.strictEqual(L.deleteTag(u, 'jobs').movedTo, 'german');
+  assert.strictEqual(u.blocks[0].tag, 'german');
+  // keep one
+  const one = L.newState(); one.tags = [one.tags[0]];
+  assert.match(L.deleteTag(one, 'work').error, /at least one/);
+  assert.strictEqual(one.tags.length, 1);
+});
+
+t('new blocks with an unknown tag land on Personal', () => {
+  const s = L.newState();
+  L.saveBlock(s, { id: null, date: '2026-11-13', title: 'x', tag: 'ghost', start: 600, end: 660, repeat: 'once' });
+  assert.strictEqual(s.blocks[0].tag, 'personal');
+});
+
 console.log('\n' + pass + ' passed');

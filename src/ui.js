@@ -14,7 +14,7 @@
   var sel = L.dk(now);
   var cal = { y: now.getFullYear(), m: now.getMonth() };
   var hv = { y: now.getFullYear(), m: now.getMonth() };
-  var quick = null, dlg = null, hdlg = null, ddlg = null;
+  var quick = null, dlg = null, hdlg = null, ddlg = null, tdlg = null;
   var lastTag = 'personal';
   var ready = false;
 
@@ -31,13 +31,14 @@
   }
   function longDate(s) { var d = L.parse(s); return d.getDate() + ' ' + MONTHS[d.getMonth()] + ' ' + d.getFullYear(); }
   function shortDate(s) { var d = L.parse(s); return DAYS[L.wd(s)].slice(0, 3) + ' ' + d.getDate() + ' ' + MONTHS[d.getMonth()].slice(0, 3); }
+  function anyDlg() { return dlg || hdlg || ddlg || tdlg; }
   function habitById(id) { for (var i = 0; i < S.habits.length; i++) if (S.habits[i].id === id) return S.habits[i]; return null; }
   function tagVars(t) { return '--b:' + t.box + ';--f:' + t.fill + ';--t:' + t.text; }
 
   /* ================= storage ================= */
   var Store = (function () {
     var LS = 'planner.v1', mode = 'local', db = null, uidp = '', last = {}, known = {}, timer = null, writing = false, again = false;
-    var dirty = false, status = 'loading', note = '', cloudExpected = false;
+    var dirty = false, status = 'loading', note = '', cloudExpected = false, legacyDoc = false;
     var unsubs = [], liveTimer = null, liveYears = '', api = {};
 
     function stable(o) {
@@ -58,7 +59,7 @@
         var p = k.split('|'), d = p[0] === 'b' ? p[1] : p[2], y = d.slice(0, 4);
         (years[y] = years[y] || {})[k] = st.marks[k];
       });
-      return { core: { v: 1, habits: st.habits, tagHabit: st.tagHabit, blocks: st.blocks, hiddenTags: st.hiddenTags, years: Object.keys(years).sort() }, years: years };
+      return { core: { v: 1, habits: st.habits, tags: st.tags, tagHabit: st.tagHabit, blocks: st.blocks, hiddenTags: st.hiddenTags, years: Object.keys(years).sort() }, years: years };
     }
     function prime(st) {
       var d = toDocs(st); last = {}; known = {};
@@ -71,11 +72,12 @@
       var snap = await db.doc(uidp + '/core').get();
       if (!snap.exists) return null;
       var c = snap.data() || {}, marks = {}, ys = c.years || [];
+      legacyDoc = !Array.isArray(c.tags);
       for (var i = 0; i < ys.length; i++) {
         var s2 = await db.doc(uidp + '/marks-' + ys[i]).get();
         if (s2.exists) { var m = (s2.data() || {}).m || {}; Object.keys(m).forEach(function (k) { marks[k] = m[k]; }); }
       }
-      return L.normalize({ habits: c.habits, tagHabit: c.tagHabit, blocks: c.blocks, hiddenTags: c.hiddenTags, marks: marks });
+      return L.normalize({ habits: c.habits, tags: c.tags, tagHabit: c.tagHabit, blocks: c.blocks, hiddenTags: c.hiddenTags, marks: marks });
     }
     async function cloudInit() {
       db = await window.claude.use('db');
@@ -95,6 +97,7 @@
           mode = 'cloud';
           if (!st) { var legacy = lsRead(); st = legacy ? L.normalize(legacy) : null; if (st) dirty = true; }
           if (st) prime(st); else { st = L.newState(); prime(L.newState()); dirty = true; }
+          if (legacyDoc) { delete last[uidp + '/core']; dirty = true; }   // saved before custom tags: write the tags back once
         } catch (e) {
           mode = 'local'; db = null;
           note = 'Cloud sync is unavailable right now, so changes are kept on this device only.';
@@ -258,10 +261,10 @@
         var D = L.addDays(ws, i), n = L.parse(D).getDate();
         strip += '<button class="wkd' + (D === sel ? ' sel' : '') + (D === today ? ' today' : '') + (L.occurrencesOn(S, D).length ? ' has' : '') + '" data-a="pick" data-d="' + D + '" aria-label="' + esc(longDate(D)) + '"' + (D === sel ? ' aria-current="date"' : '') + '><em>' + 'MTWTFSS'.charAt(i) + '</em><span>' + n + '<i></i></span></button>';
       }
-      var tags = calOpen ? '<div class="phtags" role="group" aria-label="Tags">' + L.TAGS.map(function (t) {
+      var tags = calOpen ? '<div class="phtags" role="group" aria-label="Tags">' + L.tagList(S).map(function (t) {
         var off = S.hiddenTags.indexOf(t.id) >= 0;
         return '<button class="chip' + (off ? '' : ' on') + '" style="' + tagStyle(t) + '" data-a="tag" data-t="' + t.id + '" aria-pressed="' + (!off) + '"><i></i>' + t.name + '</button>';
-      }).join('') + '</div>' : '';
+      }).join('') + '<button class="chip ed" data-a="tg-open">Edit tags</button></div>' : '';
       head = '<header class="ph"><div class="ph-top"><button class="mbtn' + (calOpen ? ' open' : '') + '" data-a="cal-toggle" aria-expanded="' + calOpen + '" aria-label="Month calendar">' + MONTHS[d.getMonth()] + ' ' + d.getFullYear() + ic('chev', 18) + '</button>' +
         '<span style="display:flex;align-items:center;gap:12px"><span class="sync" id="sync" role="status">' + esc(Store.label()) + '</span>' + (sel !== today ? '<button class="mbtn" data-a="today">Today</button>' : '') + '</span></div>' +
         '<div class="ph-title"><div><div class="d1">' + DAYS[L.wd(sel)] + '</div><div class="d2">' + d.getDate() + ' ' + MONTHS[d.getMonth()] + ' · Week ' + isoWeek(sel) + '</div></div><div class="ringw">' + ringSvg(st.done, st.total, 44) + '<span>' + st.done + ' of ' + st.total + '</span></div></div>' +
@@ -310,7 +313,7 @@
   }
 
   function renderTags() {
-    return '<section class="card pad" aria-label="Tags"><div class="h3" style="margin-bottom:4px">Tags</div>' + L.TAGS.map(function (t) {
+    return '<section class="card pad" aria-label="Tags"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><span class="h3">Tags</span><button class="btn sm" data-a="tg-open">Edit</button></div>' + L.tagList(S).map(function (t) {
       var off = S.hiddenTags.indexOf(t.id) >= 0;
       return '<button class="trow" data-a="tag" data-t="' + t.id + '" aria-pressed="' + (!off) + '"><span class="tbox' + (off ? ' off' : '') + '" style="--b:' + t.box + ';--k:' + t.chk + '">' + (off ? '' : ic('check', 12)) + '</span><span>' + t.name + '</span></button>';
     }).join('') + '</section>';
@@ -345,7 +348,7 @@
     }
     var laid = L.layoutDay(occs.map(function (o, k) { o._s = statuses[k]; return o; }));
     var tiles = laid.map(function (o) {
-      var t = L.tagById(o.tag), top = (o.start - L.DAY_START) * HOUR_PX / 60 + 2, hgt = (o.end - o.start) * HOUR_PX / 60 - 4;
+      var t = L.tagById(S, o.tag), top = (o.start - L.DAY_START) * HOUR_PX / 60 + 2, hgt = (o.end - o.start) * HOUR_PX / 60 - 4;
       var short = o.end - o.start <= 60, s = o._s, hb = o.habit ? habitById(o.habit) : null, pill = '';
       if (hb) pill = s === 'd' ? '<span class="pill on">' + ic('check', 11) + ' ' + (phone ? 'Logged' : 'Logged to ' + esc(hb.name)) + '</span>' : s === 'x' ? '<span class="pill off">Not logged</span>' : '<span class="pill dash">' + (phone ? 'Auto-logs' : 'Auto-logs to ' + esc(hb.name)) + '</span>';
       var pw = 100 / o.cols, lf = o.col * pw, key = o.key;
@@ -360,7 +363,7 @@
       var qt = (quick.start - L.DAY_START) * HOUR_PX / 60 + 2, maxTop = 24 * HOUR_PX - 160;
       if (qt > maxTop) qt = maxTop;
       q = '<div class="quick" style="top:' + qt + 'px" role="group" aria-label="New block"><input class="qin" data-f="q-title" value="' + esc(quick.title) + '" placeholder="What are you doing?" aria-label="Title" autocomplete="off" enterkeyhint="done"><div class="chips">' +
-        L.TAGS.map(function (t) { return '<button class="chip' + (quick.tag === t.id ? ' on' : '') + '" style="' + tagStyle(t) + '" data-a="q-tag" data-t="' + t.id + '" aria-pressed="' + (quick.tag === t.id) + '"><i></i>' + t.name + '</button>'; }).join('') +
+        L.tagList(S).map(function (t) { return '<button class="chip' + (quick.tag === t.id ? ' on' : '') + '" style="' + tagStyle(t) + '" data-a="q-tag" data-t="' + t.id + '" aria-pressed="' + (quick.tag === t.id) + '"><i></i>' + t.name + '</button>'; }).join('') +
         '</div><div class="qrow"><span>' + timeSelect('q-start', quick.start, 'start') + ' – ' + timeSelect('q-end', quick.end, 'end') + '</span>' + (phone ? '' : '<span class="hint">Enter to add · Esc to cancel</span>') + '<span><button class="btn sm" data-a="q-more">Details</button> <button class="btn sm pri" data-a="q-add">Add</button></span></div></div>';
     }
     var nl = '', mins = Math.round((now - L.parse(sel)) / 60000);
@@ -412,10 +415,11 @@
     if (dlg) { $dlg.innerHTML = blockDlg(); return; }
     if (hdlg) { $dlg.innerHTML = habitDlg(); return; }
     if (ddlg) { $dlg.innerHTML = dataDlg(); return; }
+    if (tdlg) { $dlg.innerHTML = tagDlg(); return; }
     $dlg.innerHTML = '';
   }
   function closeDlg() {
-    dlg = null; hdlg = null; ddlg = null; $dlg.innerHTML = '';
+    dlg = null; hdlg = null; ddlg = null; tdlg = null; $dlg.innerHTML = '';
     var fresh = pendingRemote && !Store.dirty;
     if (fresh) S = pendingRemote;
     pendingRemote = null;
@@ -429,7 +433,7 @@
   function blockDlg() {
     var d = dlg, hb = d.habit ? habitById(d.habit) : null, wdName = DAYS[L.wd(d.series ? d.occDate : d.date)];
     var dateLocked = d.series && d.repeat !== 'once';
-    var chips = L.TAGS.map(function (t) { return '<button class="chip lg' + (d.tag === t.id ? ' on' : '') + '" style="' + tagStyle(t) + '" data-a="d-tag" data-t="' + t.id + '" aria-pressed="' + (d.tag === t.id) + '"><i></i>' + t.name + '</button>'; }).join('');
+    var chips = L.tagList(S).map(function (t) { return '<button class="chip lg' + (d.tag === t.id ? ' on' : '') + '" style="' + tagStyle(t) + '" data-a="d-tag" data-t="' + t.id + '" aria-pressed="' + (d.tag === t.id) + '"><i></i>' + t.name + '</button>'; }).join('');
     var reps = [['once', 'Only this day'], ['weekly', 'Every ' + wdName], ['weekdays', 'Every weekday']].map(function (r) { return '<button data-a="d-rep" data-r="' + r[0] + '" aria-pressed="' + (d.repeat === r[0]) + '">' + r[1] + '</button>'; }).join('');
     var sel2 = d.habit ? '<div class="gpad" style="padding-top:0"><select class="fld" data-f="d-habit" aria-label="Habit">' + S.habits.map(function (h) { return '<option value="' + h.id + '"' + (h.id === d.habit ? ' selected' : '') + '>' + esc(h.name) + '</option>'; }).join('') + '</select></div>' : '';
     var foot;
@@ -453,11 +457,47 @@
       (d.err ? '<div class="err" role="alert">' + esc(d.err) + '</div>' : '') + foot + '</div></div>';
   }
 
+  /* One colour picker for tags and habits: a palette of large swatches plus a free hex field. */
+  function swatchBtn(kind, id, color, label, open) {
+    return '<button class="cswatch" style="--c:' + color + '" data-a="pk-open" data-kind="' + kind + '" data-id="' + esc(id) + '" aria-expanded="' + !!open + '" aria-label="Colour for ' + esc(label) + '"></button>';
+  }
+  function pickerHtml(kind, id, color) {
+    var attrs = ' data-kind="' + kind + '" data-id="' + esc(id) + '"';
+    return '<div class="picker"><div class="swgrid" role="group" aria-label="Colours">' + L.PALETTE.map(function (c) {
+      return '<button class="sw3" style="--c:' + c + '" data-a="pk-sw"' + attrs + ' data-c="' + c + '" aria-pressed="' + (c === color) + '" aria-label="Colour ' + c + '"></button>';
+    }).join('') + '</div><div class="hexrow"><span class="cpv" style="--c:' + color + '"' + attrs + '></span><label>Hex<input class="fld hex" data-f="pk-hex"' + attrs + ' value="' + color + '" maxlength="7" spellcheck="false" autocapitalize="characters" autocomplete="off" aria-label="Hex colour"></label></div></div>';
+  }
+  function setColor(kind, id, c) {
+    if (kind === 'tag') L.updateTag(S, id, { color: c });
+    else { var h = habitById(id); if (h) h.color = c; }
+    Store.schedule();
+  }
+  /* Update the open picker in place, so typing a hex code keeps the cursor in the field. */
+  function paintColor(kind, id, c) {
+    [].forEach.call($dlg.querySelectorAll('.cswatch,.cpv'), function (el) { if (el.dataset.kind === kind && el.dataset.id === id) el.style.setProperty('--c', c); });
+    [].forEach.call($dlg.querySelectorAll('.sw3'), function (el) { if (el.dataset.kind === kind && el.dataset.id === id) el.setAttribute('aria-pressed', String(el.dataset.c === c)); });
+  }
+  function focusSwatch(kind, id) {
+    [].forEach.call($dlg.querySelectorAll('.cswatch'), function (el) { if (el.dataset.kind === kind && el.dataset.id === id) el.focus(); });
+  }
+
+  function tagDlg() {
+    var only = S.tags.length < 2;
+    var rows = L.tagList(S).map(function (t) {
+      var open = tdlg.pick === t.id;
+      return '<div class="hli"><input class="fld" data-f="tname" data-id="' + esc(t.id) + '" value="' + esc(t.name) + '" maxlength="24" aria-label="Tag name">' + swatchBtn('tag', t.id, t.color, t.name, open) +
+        '<button class="btn sm danger" data-a="tg-del" data-id="' + esc(t.id) + '"' + (only ? ' disabled' : '') + '>' + (tdlg.confirm === t.id ? 'Confirm remove' : 'Remove') + '</button>' + (open ? pickerHtml('tag', t.id, t.color) : '') + '</div>';
+    }).join('');
+    return '<div class="scrim"><div class="dlg" role="dialog" aria-modal="true" aria-labelledby="dt"><div class="grab"></div><div class="dh"><h2 id="dt">Tags</h2><button class="ib" data-a="tg-close" aria-label="Close">' + ic('x', 16) + '</button></div>' +
+      '<div class="note" style="margin-bottom:12px">Tags colour your blocks. Tap a colour dot to change it. Removing a tag moves its blocks to Personal, or to another tag if Personal is gone.</div><div class="hlist">' + rows + '</div>' +
+      '<div class="df"><button class="btn" data-a="tg-add">' + ic('plus', 14) + ' Add tag</button><button class="btn pri" data-a="tg-close">Done</button></div></div></div>';
+  }
+
   function habitDlg() {
     var rows = S.habits.map(function (h) {
-      return '<div class="hli"><input class="fld" data-f="hname" data-h="' + h.id + '" value="' + esc(h.name) + '" aria-label="Habit name"><span class="cdots" role="group" aria-label="Colour">' +
-        L.HABIT_COLORS.map(function (c) { return '<button class="cdot" style="--c:' + c + '" data-a="hm-color" data-h="' + h.id + '" data-c="' + c + '" aria-pressed="' + (h.color === c) + '" aria-label="Colour ' + c + '"></button>'; }).join('') +
-        '</span><button class="btn sm danger" data-a="hm-del" data-h="' + h.id + '">' + (hdlg.confirm === h.id ? 'Confirm remove' : 'Remove') + '</button></div>';
+      var open = hdlg.pick === h.id;
+      return '<div class="hli"><input class="fld" data-f="hname" data-h="' + h.id + '" value="' + esc(h.name) + '" aria-label="Habit name">' + swatchBtn('habit', h.id, h.color, h.name, open) +
+        '<button class="btn sm danger" data-a="hm-del" data-h="' + h.id + '">' + (hdlg.confirm === h.id ? 'Confirm remove' : 'Remove') + '</button>' + (open ? pickerHtml('habit', h.id, h.color) : '') + '</div>';
     }).join('');
     return '<div class="scrim"><div class="dlg" role="dialog" aria-modal="true" aria-labelledby="dt"><div class="grab"></div><div class="dh"><h2 id="dt">Habits</h2><button class="ib" data-a="hm-close" aria-label="Close">' + ic('x', 16) + '</button></div>' +
       '<div class="note" style="margin-bottom:12px">A block counts toward a habit when you pick it in the block’s editor. Removing a habit also removes its history.</div><div class="hlist">' + rows + '</div>' +
@@ -470,6 +510,7 @@
     var rst = d.reset ? '<div class="conf"><span>Delete every block and all history?</span><span style="display:flex;gap:8px"><button class="btn sm" data-a="reset-cancel">Cancel</button><button class="btn sm danger" data-a="reset-ok">Delete everything</button></span></div>' : '';
     return '<div class="scrim"><div class="dlg" role="dialog" aria-modal="true" aria-labelledby="dt"><div class="grab"></div><div class="dh"><h2 id="dt">Data</h2><button class="ib" data-a="data-close" aria-label="Close">' + ic('x', 16) + '</button></div>' +
       '<div class="note">' + esc(where) + (Store.note ? ' ' + esc(Store.note) : '') + '</div>' +
+      '<div class="drow"><span><b>Tags</b><div class="note">Add, rename and recolour tags.</div></span><button class="btn" data-a="tg-open">Edit tags</button></div>' +
       '<div class="drow"><span><b>Export</b><div class="note">Download a backup file of everything.</div></span><button class="btn" data-a="export">Export</button></div>' +
       '<div class="drow"><span><b>Import</b><div class="note">Load a backup file. This replaces what is here.</div></span><button class="btn" data-a="import-pick">Choose file</button><input type="file" id="imp" accept=".json,application/json" class="sr" tabindex="-1" aria-hidden="true"></div>' + pend +
       '<div class="drow"><span><b>Start over</b><div class="note">Delete all blocks and history.</div></span><button class="btn danger" data-a="reset">Reset</button></div>' + rst +
@@ -507,7 +548,7 @@
   }
   function openNew(init) {
     var s = init && init.start != null ? init.start : defaultStart(), e = init && init.end != null ? init.end : Math.min(s + 60, L.DAY_END);
-    var tag = (init && init.tag) || 'personal';
+    var tag = L.tagById(S, (init && init.tag) || 'personal').id;
     dlg = { id: null, occDate: null, date: sel, title: (init && init.title) || '', tag: tag, start: s, end: e, habit: S.tagHabit[tag] || null, notes: '', repeat: 'once', series: false, err: '', confirm: false };
     quick = null; render(); openDlg('[data-f=title]');
   }
@@ -531,7 +572,7 @@
     open: function (el) { openEdit(el.dataset.k); },
     slot: function (el) {
       var s = +el.dataset.m;
-      quick = { start: s, end: Math.min(s + 60, L.DAY_END), tag: lastTag, title: '', focus: true }; render();
+      quick = { start: s, end: Math.min(s + 60, L.DAY_END), tag: L.tagById(S, lastTag).id, title: '', focus: true }; render();
     },
     new: function () { openNew(); },
     'q-tag': function (el) { quick.tag = el.dataset.t; quick.focus = true; render(); },
@@ -560,15 +601,35 @@
     'd-del-one': function () { L.deleteBlock(S, dlg.id, dlg.occDate, 'one'); closeDlg(); commit(); },
     'd-del-follow': function () { L.deleteBlock(S, dlg.id, dlg.occDate, 'following'); closeDlg(); commit(); },
 
-    'hm-open': function () { hdlg = { confirm: null }; openDlg('input'); },
+    'hm-open': function () { hdlg = { confirm: null, pick: null }; openDlg('input'); },
     'hm-close': function () { closeDlg(); commit(); },
     'hm-add': function () {
-      var c = L.HABIT_COLORS[S.habits.length % L.HABIT_COLORS.length];
+      var c = L.PALETTE[S.habits.length % L.PALETTE.length];
       S.habits.push({ id: 'h-' + Math.random().toString(36).slice(2, 8), name: 'New habit', color: c });
       Store.schedule(); renderDlg();
       var ins = $dlg.querySelectorAll('input'); if (ins.length) { var l = ins[ins.length - 1]; l.focus(); l.select(); }
     },
-    'hm-color': function (el) { var h = habitById(el.dataset.h); if (h) { h.color = el.dataset.c; Store.schedule(); renderDlg(); } },
+    'tg-open': function () { quick = null; ddlg = null; tdlg = { pick: null, confirm: null }; openDlg('input'); },
+    'tg-close': function () { closeDlg(); commit(); },
+    'tg-add': function () {
+      var r = L.addTag(S, 'New tag', L.PALETTE[S.tags.length % L.PALETTE.length]);
+      if (!r.ok) return;
+      tdlg.pick = null; tdlg.confirm = null; Store.schedule(); renderDlg();
+      var ins = $dlg.querySelectorAll('.hli input'); if (ins.length) { var l = ins[ins.length - 1]; l.focus(); l.select(); }
+    },
+    'tg-del': function (el) {
+      if (tdlg.confirm === el.dataset.id) { if (L.deleteTag(S, el.dataset.id).ok) { if (tdlg.pick === el.dataset.id) tdlg.pick = null; Store.schedule(); } tdlg.confirm = null; }
+      else tdlg.confirm = el.dataset.id;
+      renderDlg();
+    },
+    'pk-open': function (el) {
+      var d = el.dataset.kind === 'tag' ? tdlg : hdlg;
+      d.pick = d.pick === el.dataset.id ? null : el.dataset.id; renderDlg(); focusSwatch(el.dataset.kind, el.dataset.id);
+    },
+    'pk-sw': function (el) {
+      setColor(el.dataset.kind, el.dataset.id, el.dataset.c); renderDlg();
+      var on = $dlg.querySelector('.sw3[aria-pressed="true"]'); if (on) on.focus();
+    },
     'hm-del': function (el) {
       if (hdlg.confirm === el.dataset.h) { L.deleteHabit(S, el.dataset.h); hdlg.confirm = null; Store.schedule(); }
       else hdlg.confirm = el.dataset.h;
@@ -612,6 +673,12 @@
     else if (f === 'title' && dlg) dlg.title = v;
     else if (f === 'notes' && dlg) dlg.notes = v;
     else if (f === 'hname') { var h = habitById(e.target.dataset.h); if (h) { h.name = v.trim() ? v : h.name; Store.schedule(); } }
+    else if (f === 'tname') { if (L.updateTag(S, e.target.dataset.id, { name: v }).ok) Store.schedule(); }
+    else if (f === 'pk-hex') {
+      var c = L.normHex(v), k = e.target.dataset;
+      e.target.classList.toggle('bad', !c && v.trim() !== '');
+      if (c) { setColor(k.kind, k.id, c); paintColor(k.kind, k.id, c); }
+    }
   });
 
   document.addEventListener('change', function (e) {
@@ -625,6 +692,7 @@
     else if (f === 'date' && dlg) { if (/^\d{4}-\d{2}-\d{2}$/.test(v)) { dlg.date = v; renderDlg(); } }
     else if (f === 'd-habit' && dlg) { dlg.habit = v; renderDlg(); }
     else if (f === 'hname') { render(); }
+    else if (f === 'tname' || f === 'pk-hex') { renderDlg(); }
   });
 
   function importFile(file) {
@@ -644,7 +712,7 @@
 
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape') {
-      if (dlg || hdlg || ddlg) { var wasH = !!hdlg; closeDlg(); if (wasH) commit(); else render(); }
+      if (anyDlg()) { var wasEdit = !!(hdlg || tdlg); closeDlg(); if (wasEdit) commit(); else render(); }
       else if (quick) { quick = null; render(); }
     } else if (e.key === 'Enter' && quick && e.target.classList && e.target.classList.contains('qin')) {
       e.preventDefault(); quickAdd();
@@ -656,7 +724,7 @@
   /* ================= phone gestures, live updates ================= */
   var tx = 0, ty = 0, tOk = false;
   document.addEventListener('touchstart', function (e) {
-    tOk = phone && view === 'day' && !dlg && !hdlg && !ddlg && !quick && e.target.closest && !!e.target.closest('.pmain');
+    tOk = phone && view === 'day' && !anyDlg() && !quick && e.target.closest && !!e.target.closest('.pmain');
     if (tOk && e.touches[0]) { tx = e.touches[0].clientX; ty = e.touches[0].clientY; }
   }, { passive: true });
   document.addEventListener('touchend', function (e) {
@@ -665,17 +733,17 @@
     if (Math.abs(dx) > 70 && Math.abs(dy) < 45) actions[dx < 0 ? 'next' : 'prev']();
   }, { passive: true });
   window.addEventListener('resize', function () {
-    if (ready && detectPhone() !== phone && !dlg && !hdlg && !ddlg && !quick) render();
+    if (ready && detectPhone() !== phone && !anyDlg() && !quick) render();
   });
   Store.onRemote = function (st) {
-    if (dlg || hdlg || ddlg || quick) { pendingRemote = st; return; }
+    if (anyDlg() || quick) { pendingRemote = st; return; }
     S = st; render();
   };
 
   /* ================= boot ================= */
 
   setInterval(function () {
-    if (!ready || dlg || hdlg || ddlg || quick) return;
+    if (!ready || anyDlg() || quick) return;
     render();
   }, 30000);
 
@@ -683,7 +751,7 @@
     if (document.visibilityState === 'hidden') { Store.flushNow(); return; }
     if (!ready) return;
     Store.refresh().then(function (st) {
-      if (st && !dlg && !hdlg && !ddlg && !quick) { S = st; render(); } else if (!st && !dlg && !hdlg && !ddlg && !quick) render();
+      if (st && !anyDlg() && !quick) { S = st; render(); } else if (!st && !anyDlg() && !quick) render();
     });
   });
   window.addEventListener('pagehide', function () { Store.flushNow(); });

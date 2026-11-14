@@ -309,6 +309,120 @@ function setSel(w, el, v) { el.value = v; el.dispatchEvent(new w.Event('change',
     d.window.close();
   });
 
+  const rgbOf = h => 'rgb(' + [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16)).join(', ') + ')';
+  const isColor = (css, hex) => css.toLowerCase() === hex.toLowerCase() || css === rgbOf(hex);
+
+  await t('tags sheet: add, rename, pick a colour from the palette or type hex', async () => {
+    const d = boot({}); await wait(80); const p = d.window, P = p.PlannerLogic;
+    click(p, $(p, '[data-a="tg-open"]'));
+    assert.ok($(p, '.dlg')); assert.match($(p, '.dlg h2').textContent, /Tags/);
+    assert.strictEqual($$(p, '.dlg .hli').length, 6);
+    click(p, $(p, '[data-a="tg-add"]'));
+    assert.strictEqual($$(p, '.dlg .hli').length, 7);
+    typeIn(p, $$(p, '.dlg .hli')[6].querySelector('input'), 'Reading');
+    assert.strictEqual(p.__planner.S.tags[6].name, 'Reading');
+    click(p, $$(p, '.dlg .hli')[6].querySelector('.cswatch'));
+    assert.strictEqual($$(p, '.sw3').length, P.PALETTE.length);
+    click(p, $$(p, '.sw3')[4]);
+    assert.strictEqual(p.__planner.S.tags[6].color, P.PALETTE[4]);
+    assert.strictEqual($$(p, '.sw3')[4].getAttribute('aria-pressed'), 'true');
+    const hex = $(p, '.hex'); assert.strictEqual(hex.value, P.PALETTE[4]);
+    typeIn(p, hex, '12ab34');                                     // free hex, no #
+    assert.strictEqual(p.__planner.S.tags[6].color, '#12AB34');
+    assert.strictEqual($(p, '.hex'), hex, 'typing must not re-render the field');
+    assert.ok(isColor($(p, '.hli .cpv').style.getPropertyValue('--c'), '#12AB34') || $(p, '.hli .cpv').getAttribute('style').includes('#12AB34'));
+    typeIn(p, hex, 'zz'); assert.ok(hex.classList.contains('bad')); assert.strictEqual(p.__planner.S.tags[6].color, '#12AB34');
+    setSel(p, hex, 'zz'); assert.strictEqual($(p, '.hex').value, '#12AB34');       // leaves the field: back to the last good colour
+    click(p, $(p, '[data-a="tg-close"]'));
+    assert.ok(!$(p, '.dlg'));
+    assert.strictEqual($$(p, '.trow').length, 7); assert.match($$(p, '.trow')[6].textContent, /Reading/);
+    d.window.close();
+  });
+
+  await t('a custom tag colours its tile; removing the tag moves the block to Personal', async () => {
+    const d = boot({}); await wait(80); const p = d.window, P = p.PlannerLogic;
+    click(p, $(p, '[data-a="tg-open"]')); click(p, $(p, '[data-a="tg-add"]'));
+    typeIn(p, $$(p, '.dlg .hli')[6].querySelector('input'), 'Reading');
+    click(p, $$(p, '.dlg .hli')[6].querySelector('.cswatch')); typeIn(p, $(p, '.hex'), '#FFD60A');
+    click(p, $(p, '[data-a="tg-close"]'));
+    click(p, $(p, '.hr[data-m="1200"]')); typeIn(p, $(p, '.qin'), 'Chapter 3');
+    click(p, $$(p, '.quick .chip').find(c => /Reading/.test(c.textContent)));
+    $(p, '.qin').dispatchEvent(new p.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    const id = p.__planner.S.tags[6].id, d1 = P.tagById(p.__planner.S, id);
+    assert.strictEqual(p.__planner.S.blocks[0].tag, id);
+    let tile = $(p, '.tile');
+    assert.ok(isColor(tile.style.backgroundColor, d1.fill), tile.style.backgroundColor + ' vs ' + d1.fill);
+    assert.ok(isColor(tile.style.color, d1.text), tile.style.color + ' vs ' + d1.text);
+    assert.match(tile.textContent, /Reading/);
+    // remove the tag: confirm step, then the tile is Personal grey
+    click(p, $(p, '[data-a="tg-open"]'));
+    click(p, $$(p, '[data-a="tg-del"]')[6]); assert.match($$(p, '[data-a="tg-del"]')[6].textContent, /Confirm/);
+    assert.strictEqual(p.__planner.S.tags.length, 7);
+    click(p, $$(p, '[data-a="tg-del"]')[6]);
+    assert.strictEqual(p.__planner.S.tags.length, 6); assert.strictEqual(p.__planner.S.blocks[0].tag, 'personal');
+    click(p, $(p, '[data-a="tg-close"]'));
+    tile = $(p, '.tile'); assert.match(tile.textContent, /Personal/);
+    assert.ok(isColor(tile.style.backgroundColor, P.tagById(p.__planner.S, 'personal').fill));
+    assert.strictEqual($$(p, '.trow').length, 6);
+    // the last tag cannot be removed
+    click(p, $(p, '[data-a="tg-open"]'));
+    while ($$(p, '[data-a="tg-del"]').length > 1) { const b = $$(p, '[data-a="tg-del"]')[0]; click(p, b); click(p, $$(p, '[data-a="tg-del"]')[0]); }
+    assert.strictEqual(p.__planner.S.tags.length, 1);
+    assert.ok($(p, '[data-a="tg-del"]').disabled);
+    click(p, $(p, '[data-a="tg-close"]'));
+    assert.strictEqual($$(p, '.trow').length, 1); assert.strictEqual(p.__planner.S.blocks[0].tag, p.__planner.S.tags[0].id);
+    d.window.close();
+  });
+
+  await t('habits use the same picker', async () => {
+    const d = boot({}); await wait(80); const p = d.window, P = p.PlannerLogic;
+    click(p, $(p, '[data-a="view"][data-v="habits"]')); click(p, $(p, '[data-a="hm-open"]'));
+    assert.ok(!$(p, '.picker'));
+    click(p, $$(p, '.hli .cswatch')[0]);
+    assert.strictEqual($$(p, '.sw3').length, P.PALETTE.length);
+    click(p, $$(p, '.sw3')[11]); assert.strictEqual(p.__planner.S.habits[0].color, P.PALETTE[11]);
+    typeIn(p, $(p, '.hex'), '#12AB34'); assert.strictEqual(p.__planner.S.habits[0].color, '#12AB34');
+    click(p, $$(p, '.hli .cswatch')[0]); assert.ok(!$(p, '.picker'));                   // swatch toggles the picker
+    click(p, $(p, '[data-a="hm-close"]'));
+    assert.ok($$(p, '.sc')[0].getAttribute('style').includes('#12AB34'));
+    d.window.close();
+  });
+
+  await t('saves from before custom tags load with the six starting tags and are written back', async () => {
+    const st = { 'data/users/m1/core': { v: 1, habits: [{ id: 'h-x', name: 'X', color: '#FF9F0A' }], tagHabit: {}, hiddenTags: [], years: [],
+      blocks: [{ id: 'b1', title: 'Old block', tag: 'gym', start: 540, end: 600, habit: null, notes: '', rep: 'once', date: '2026-11-13' }] } };
+    const cl = { use: async n => n === 'db' ? mkDb(st) : n === 'user' ? { id: async () => 'm1' } : { save: async () => {} } };
+    const d = boot({ claude: cl }); await wait(1000);
+    assert.strictEqual($$(d.window, '.trow').length, 6);
+    assert.strictEqual($$(d.window, '.tile').length, 1); assert.match($(d.window, '.tile').textContent, /Gym/);
+    const core = st['data/users/m1/core'];
+    assert.ok(Array.isArray(core.tags) && core.tags.length === 6, 'tags written back');
+    assert.strictEqual(core.blocks.length, 1);
+    d.window.close();
+  });
+
+  await t('custom tags sync between devices', async () => {
+    const shared = {}; const cl = { use: async n => n === 'db' ? mkDb(shared) : n === 'user' ? { id: async () => 'u7' } : { save: async () => {} } };
+    const A = boot({ claude: cl }); const B = boot({ claude: cl }); await wait(150);
+    click(A.window, $(A.window, '[data-a="tg-open"]')); click(A.window, $(A.window, '[data-a="tg-add"]'));
+    typeIn(A.window, $$(A.window, '.dlg .hli')[6].querySelector('input'), 'Reading'); click(A.window, $(A.window, '[data-a="tg-close"]'));
+    await wait(1600);
+    assert.ok(shared['data/users/u7/core'].tags.some(x => x.name === 'Reading'));
+    assert.strictEqual($$(B.window, '.trow').length, 7);
+    A.window.close(); B.window.close();
+  });
+
+  await t('phone: Edit tags opens the Tags sheet; Data sheet links to it', async () => {
+    const d = boot({ width: 390 }); await wait(100); const p = d.window;
+    click(p, $(p, '[data-a="cal-toggle"]'));
+    assert.ok($(p, '.phtags .chip.ed'));
+    click(p, $(p, '.phtags .chip.ed')); assert.match($(p, '.dlg h2').textContent, /Tags/); assert.ok($(p, '.dlg .grab'));
+    click(p, $(p, '[data-a="tg-close"]'));
+    click(p, $$(p, '.tabbar button')[2]); click(p, $(p, '.dlg [data-a="tg-open"]'));
+    assert.match($(p, '.dlg h2').textContent, /Tags/); assert.strictEqual($$(p, '.dlg .hli').length, 6);
+    d.window.close();
+  });
+
   console.log('\n' + pass + ' passed; page errors:', errors.length, errors.slice(0, 3));
   process.exit(process.exitCode || 0);
 })();
