@@ -475,6 +475,7 @@
       '<div class="grp"><div class="gpad hbar"><div><div style="font-weight:500">' + (hb ? 'Count toward ' + esc(hb.name) : 'Count toward a habit') + '</div><div class="note">Logs itself when the block ends. Tap its circle if you did not do it.</div></div><button class="sw2" role="switch" aria-checked="' + !!d.habit + '" aria-label="Count toward a habit" data-a="d-habit"><i></i></button></div>' + sel2 + '</div>' +
       '<div class="grp gpad"><span class="glab">Repeat</span><div class="segc" role="group" aria-label="Repeat">' + reps + '</div>' +
       (d.series ? '<div class="small muted" style="margin-top:8px">Changes to a repeating block apply to this day and the days after it. Earlier days stay as they were.</div>' : '') + '</div>' +
+      copyGroup(d) +
       '<div class="grp"><textarea id="f-notes" class="notes" data-f="notes" placeholder="Notes" aria-label="Notes">' + esc(d.notes) + '</textarea></div>' +
       (d.err ? '<div class="err" role="alert">' + esc(d.err) + '</div>' : '') + foot + '</div></div>';
   }
@@ -513,6 +514,14 @@
     return '<div class="scrim"><div class="dlg" role="dialog" aria-modal="true" aria-labelledby="dt"><div class="grab"></div><div class="dh"><h2 id="dt">Tags</h2><button class="ib" data-a="tg-close" aria-label="Close">' + ic('x', 16) + '</button></div>' +
       '<div class="note" style="margin-bottom:12px">Tags colour your blocks. Tap a colour dot to change it. Removing a tag moves its blocks to Personal, or to another tag if Personal is gone.</div><div class="hlist">' + rows + '</div>' +
       '<div class="df"><button class="btn" data-a="tg-add">' + ic('plus', 14) + ' Add tag</button><button class="btn pri" data-a="tg-close">Done</button></div></div></div>';
+  }
+
+  /* Saved blocks only: copy what the dialog shows to another day, as a one-off. */
+  function copyGroup(d) {
+    if (!d.id) return '';
+    return '<div class="grp gpad"><span class="glab">Copy to another day</span><div class="cprow"><input id="f-copy" type="date" class="ctl" data-f="copydate" value="' + esc(d.copyDate) + '" aria-label="Copy to date"><button class="btn sm" data-a="d-copy">Copy</button></div>' +
+      '<div class="chips" style="margin-top:8px"><button class="chip" data-a="d-copy-to" data-n="1">Next day</button><button class="chip" data-a="d-copy-to" data-n="7">Next week</button></div>' +
+      (d.cerr ? '<div class="err" role="alert">' + esc(d.cerr) + '</div>' : '') + (d.cok ? '<div class="note" role="status" style="margin-top:8px">' + esc(d.cok) + '</div>' : '') + '</div>';
   }
 
   function habitDlg() {
@@ -565,7 +574,7 @@
     var weekdays = o.days && o.days.length === 5 && o.days.indexOf(5) < 0 && o.days.indexOf(6) < 0;
     quick = null;
     dlg = { id: o.id, occDate: o.date, date: o.date, title: o.title, tag: o.tag, start: o.start, end: o.end, habit: o.habit, notes: o.notes,
-      repeat: o.rep === 'once' ? 'once' : (weekdays ? 'weekdays' : 'weekly'), series: o.rep === 'weekly', err: '', confirm: false };
+      repeat: o.rep === 'once' ? 'once' : (weekdays ? 'weekdays' : 'weekly'), series: o.rep === 'weekly', err: '', confirm: false, copyDate: L.addDays(o.date, 1), cok: '', cerr: '' };
     render(); openDlg('[data-f=title]');
   }
   function openNew(init) {
@@ -613,7 +622,14 @@
     'q-more': function () { var q = quick; openNew({ start: q.start, end: q.end, tag: q.tag, title: q.title }); },
     'q-add': function () { quickAdd(); },
 
-    'd-cancel': function () { closeDlg(); },
+    'd-cancel': function () { closeDlg(); render(); },
+    'd-copy-to': function (el) { dlg.copyDate = L.addDays(dlg.occDate, +el.dataset.n); dlg.cerr = ''; dlg.cok = ''; renderDlg(); },
+    'd-copy': function () {
+      var d = dlg, r = L.copyBlock(S, { title: d.title, tag: d.tag, start: d.start, end: d.end, habit: d.habit, notes: d.notes }, d.copyDate, d.occDate);
+      if (r.error) { d.cerr = r.error; d.cok = ''; }
+      else { d.cerr = ''; d.cok = 'Copied to ' + shortDate(d.copyDate) + '.'; Store.schedule(); }
+      renderDlg();
+    },
     'd-tag': function (el) {
       var old = dlg.habit === (S.tagHabit[dlg.tag] || null);
       dlg.tag = el.dataset.t; if (old) dlg.habit = S.tagHabit[dlg.tag] || null; renderDlg();
@@ -723,6 +739,7 @@
     else if (f === 'q-end' && quick) { quick.end = +v; if (quick.end <= quick.start) quick.start = Math.max(quick.end - 60, L.DAY_START); quick.focus = false; render(); }
     else if (f === 'd-start' && dlg) { dlg.start = +v; if (dlg.end <= dlg.start) dlg.end = Math.min(dlg.start + 60, L.DAY_END); renderDlg(); }
     else if (f === 'd-end' && dlg) { dlg.end = +v; if (dlg.end <= dlg.start) dlg.start = Math.max(dlg.end - 60, L.DAY_START); renderDlg(); }
+    else if (f === 'copydate' && dlg) { dlg.copyDate = v; dlg.cerr = ''; dlg.cok = ''; renderDlg(); }
     else if (f === 'date' && dlg) { if (/^\d{4}-\d{2}-\d{2}$/.test(v)) { dlg.date = v; renderDlg(); } }
     else if (f === 'd-habit' && dlg) { dlg.habit = v; renderDlg(); }
     else if (f === 'hname') { render(); }

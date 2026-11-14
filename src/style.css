@@ -258,6 +258,8 @@ body.dragging,body.dragging *{cursor:grabbing!important;-webkit-user-select:none
 .segc{display:flex;gap:2px;background:var(--elev);padding:2px;border-radius:11px}
 .segc button{flex:1 1 0;height:34px;border-radius:9px;border:0;background:transparent;font-size:13px;font-weight:500;color:var(--text)}
 .segc button[aria-pressed="true"]{background:#636366;font-weight:600}
+.cprow{display:flex;align-items:center;gap:12px}
+.cprow .ctl{flex:1 1 auto;height:40px;text-align:left}
 .notes{width:100%;min-height:64px;border:0;background:transparent;padding:12px 16px;resize:none;font-size:16px}
 .notes::placeholder{color:var(--t3)}
 .dlist{width:100%;height:48px;border:0;border-radius:14px;background:var(--card);font-size:16px;margin-top:12px}

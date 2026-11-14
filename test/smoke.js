@@ -662,6 +662,53 @@ const cloudFor = (store, uid) => ({ use: async n => n === 'db' ? mkDb(store) : n
     A.window.close(); B.window.close();
   });
 
+  await t('copy to another day: next day / next week / any date, copies what the dialog shows, saves, repeatable', async () => {
+    const d = boot({ claude: cloudFor(fixtureStore('c1'), 'c1') }); await wait(150); const w = d.window;
+    click(w, $(w, '[data-a="new"]')); assert.ok(!$(w, '#f-copy'), 'a new block has nothing to copy yet'); click(w, $(w, '[data-a="d-cancel"]'));
+    click(w, tileOf(w, /Study/).querySelector('.tbody'));
+    assert.strictEqual($(w, '#f-copy').value, '2026-11-14');                           // the day after the block's day
+    typeIn(w, $(w, '#f-title'), 'Study (extra)'); click(w, $(w, '[data-a="d-tag"][data-t="work"]'));
+    click(w, $(w, '[data-a="d-copy"]'));
+    assert.match($(w, '.dlg').textContent, /Copied to Sat 14 Nov/);
+    let S = w.__planner.S, c = S.blocks.find(b => b.date === '2026-11-14');
+    assert.ok(c); assert.strictEqual(c.title, 'Study (extra)'); assert.strictEqual(c.tag, 'work');
+    assert.strictEqual(JSON.stringify([c.start, c.end, c.rep]), JSON.stringify([540, 720, 'once']));
+    assert.strictEqual(S.blocks.find(b => b.id === 'bs').title, 'Study');             // the original is not renamed by copying
+    assert.strictEqual(S.blocks.length, 4);
+    // next week, then a typed date: the dialog stays open for more copies
+    click(w, $(w, '[data-a="d-copy-to"][data-n="7"]')); assert.strictEqual($(w, '#f-copy').value, '2026-11-20');
+    assert.ok(!/Copied/.test($(w, '.dlg').textContent), 'old confirmation is cleared');
+    click(w, $(w, '[data-a="d-copy"]'));
+    setSel(w, $(w, '#f-copy'), '2026-12-24'); click(w, $(w, '[data-a="d-copy"]'));
+    assert.strictEqual(w.__planner.S.blocks.length, 6);
+    assert.ok(w.__planner.S.blocks.some(b => b.date === '2026-12-24'));
+    // closing refreshes the day behind the dialog, and the copies show up on their days
+    click(w, $(w, '[data-a="d-cancel"]'));
+    assert.ok(!$(w, '.dlg')); assert.strictEqual($$(w, '.tile').length, 3);
+    click(w, $(w, '[data-a="next"]')); assert.strictEqual($$(w, '.tile').length, 1); assert.match($(w, '.tile').textContent, /Study \(extra\)/);
+    d.window.close();
+  });
+
+  await t('copy to another day: refuses the same day and bad dates, copies no done/skipped marks', async () => {
+    const st = fixtureStore('c2'); const d = boot({ claude: cloudFor(st, 'c2') }); await wait(150); const w = d.window;
+    click(w, tileOf(w, /Gym session/).querySelector('.chk'));                         // Fri 13 Gym: not done
+    click(w, tileOf(w, /Gym session/).querySelector('.tbody'));
+    setSel(w, $(w, '#f-copy'), '2026-11-13'); click(w, $(w, '[data-a="d-copy"]'));
+    assert.match($(w, '.dlg .err').textContent, /different day/);
+    setSel(w, $(w, '#f-copy'), ''); click(w, $(w, '[data-a="d-copy"]'));
+    assert.match($(w, '.dlg .err').textContent, /Pick a date/);
+    assert.strictEqual(w.__planner.S.blocks.length, 3);
+    click(w, $(w, '[data-a="d-copy-to"][data-n="1"]'));
+    assert.ok(!$(w, '.dlg .err'), 'the error clears when the date changes');
+    click(w, $(w, '[data-a="d-copy"]')); click(w, $(w, '[data-a="d-cancel"]'));
+    click(w, $(w, '[data-a="next"]'));
+    const t2 = $(w, '.tile'); assert.match(t2.textContent, /Gym session/); assert.ok(!t2.classList.contains('skip'));
+    assert.strictEqual(Object.keys(w.__planner.S.marks).filter(k => k.startsWith('b|2026-11-14')).length, 0);
+    await wait(900);
+    assert.strictEqual(st['data/users/c2/core'].blocks.length, 4);                    // saved to the cloud
+    d.window.close();
+  });
+
   console.log('\n' + pass + ' passed; page errors:', errors.length, errors.slice(0, 3));
   process.exit(process.exitCode || 0);
 })();
