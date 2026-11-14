@@ -544,8 +544,10 @@
 
   Store.init().then(function () {
     ready = true; render();
-    var n = document.querySelector('.nowl');
-    if (n && view === 'day') { try { window.scrollTo(0, Math.max(0, n.getBoundingClientRect().top + window.scrollY - 220)); } catch (e) { } }
+    try {
+      var n = document.querySelector('.nowl');
+      if (n && view === 'day') window.scrollTo(0, Math.max(0, n.getBoundingClientRect().top + window.scrollY - 220));
+    } catch (e) { }
   });
 
   window.__planner = { get S() { return S; }, Store: Store };
