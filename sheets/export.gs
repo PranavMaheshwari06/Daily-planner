@@ -3,7 +3,7 @@
    Setup: Extensions > Apps Script, paste this file and appsscript.json (Project Settings > show manifest),
    fill in the three values below, run setup() once and approve. Optional: run backfill() once for past weeks. */
 
-var PROJECT_ID = 'FIREBASE_PROJECT_ID';   // Firebase console > Project settings
+var PROJECT_ID = 'daily-planner-b1bd5';   // Firebase console > Project settings
 var OWNER_UID = 'OWNER_UID';              // the same uid as in firestore.rules
 var SITE = 'https://pranavmaheshwari06.github.io/Daily-planner/';
 

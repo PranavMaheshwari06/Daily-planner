@@ -1,7 +1,7 @@
 # Planner v4: own hosting, Firebase sync, weekly Sheets export
 
-Status: Phase 1 code and `sheets/export.gs` written and tested. Waiting on Phase 0: the Firebase config goes into
-`src/cloud.js` (`FIREBASE_CONFIG`), the owner uid into `firestore.rules` and `sheets/export.gs`.
+Status: Phase 1 code and `sheets/export.gs` written and tested; Firebase config filled in. Waiting on: Google sign-in
+enabled in Firebase Authentication, then the owner uid into `firestore.rules` and `sheets/export.gs`.
 
 ## Context
 The planner is a private Claude artifact today. The data sits in the artifact's `db`, which has three problems:

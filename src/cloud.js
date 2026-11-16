@@ -3,7 +3,14 @@
    or when the Firebase scripts did not load (no network on first open, tests). */
 (function () {
   'use strict';
-  var FIREBASE_CONFIG = null;   // the web app config object from the Firebase console (not a secret)
+  var FIREBASE_CONFIG = {   // Firebase console > Project settings > Your apps. Not a secret: access is enforced by firestore.rules.
+    apiKey: 'AIzaSyBPNCuJaNFnIZdWdPdLdFQMPEiHh7JrgU4',
+    authDomain: 'daily-planner-b1bd5.firebaseapp.com',
+    projectId: 'daily-planner-b1bd5',
+    storageBucket: 'daily-planner-b1bd5.firebasestorage.app',
+    messagingSenderId: '398846991531',
+    appId: '1:398846991531:web:c7fc216d3ddc7a3063ebee'
+  };
   if (!FIREBASE_CONFIG || typeof firebase === 'undefined') return;
   firebase.initializeApp(FIREBASE_CONFIG);
   var auth = firebase.auth(), db = firebase.firestore();
