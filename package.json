@@ -5,7 +5,7 @@
   "description": "Single-file daily planner with habit tracker. Builds to dist/planner.html.",
   "scripts": {
     "build": "node build.js",
-    "test": "node test/logic.test.js && node build.js && node test/smoke.js"
+    "test": "node test/logic.test.js && node build.js && node test/smoke.js && node test/sheets.test.js"
   },
   "devDependencies": { "jsdom": "^25.0.0" }
 }

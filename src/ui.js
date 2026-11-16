@@ -75,9 +75,9 @@
       }
       return L.normalize({ habits: c.habits, tags: c.tags, tagHabit: c.tagHabit, blocks: c.blocks, hiddenTags: c.hiddenTags, marks: marks });
     }
-    async function cloudInit() {
-      db = await window.claude.use('db');
-      var user = await window.claude.use('user');
+    async function cloudInit(rt) {
+      db = await rt.use('db');
+      var user = await rt.use('user');
       var id = user && (await user.id());
       if (!id) throw new Error('signed out');
       uidp = 'data/users/' + id;
@@ -85,16 +85,18 @@
     }
 
     async function init() {
-      var st = null;
-      if (window.claude && typeof window.claude.use === 'function') {
+      var st = null, rt = window.plannerCloud || window.claude;   // own Firebase backend first, Claude artifact runtime second
+      if (rt && typeof rt.use === 'function') {
         cloudExpected = true;
         try {
-          st = await Promise.race([cloudInit(), timeout(10000)]);
+          st = await Promise.race([cloudInit(rt), timeout(10000)]);
           mode = 'cloud';
           if (!st) { var legacy = lsRead(); st = legacy ? L.normalize(legacy) : null; if (st) dirty = true; }
           if (st) prime(st); else { st = L.newState(); prime(L.newState()); dirty = true; }
           if (legacyDoc) { delete last[uidp + '/core']; dirty = true; }   // saved before custom tags: write the tags back once
         } catch (e) {
+          // Own backend and signed out: show only the sign-in card, so nothing is edited locally and lost later.
+          if (rt === window.plannerCloud && e.message === 'signed out') { mode = 'signin'; db = null; setStatus('local'); return; }
           mode = 'local'; db = null;
           note = 'Cloud sync is unavailable right now, so changes are kept on this device only.';
           st = null;
@@ -199,7 +201,7 @@
       init: init, schedule: schedule, refresh: refresh, download: download, label: label, onRemote: null,
       get note() { return note; }, get mode() { return mode; }, get dirty() { return dirty; },
       get offlineBanner() { return cloudExpected && mode !== 'cloud'; },
-      flushNow: function () { clearTimeout(timer); if (dirty) flush(); }
+      flushNow: function () { clearTimeout(timer); return dirty ? flush() : Promise.resolve(); }
     };
     return api;
   })();
@@ -215,7 +217,12 @@
 
   function render() {
     now = new Date(); phone = detectPhone();
-    var banner = Store.offlineBanner ? '<div class="banner" role="alert"><b>Not syncing.</b> This page is not signed in to Claude, so changes stay on this device only. Open the link in Chrome while signed in to claude.ai.</div>' : '';
+    if (Store.mode === 'signin') {
+      $app.innerHTML = '<div class="boot"><h1 class="h3" style="color:var(--text);margin:0 0 8px">Planner</h1><p style="margin:0 0 20px">Sign in to open your planner. It syncs between your devices.</p>' +
+        '<button class="btn pri" data-a="signin">Sign in with Google</button></div>';
+      return;
+    }
+    var banner = Store.offlineBanner ? '<div class="banner" role="alert"><b>Not syncing.</b> Changes stay on this device only. Check the connection, then reload the page.</div>' : '';
     $app.innerHTML = banner + (phone ? renderPhone() : renderDesk());
     var hdr = $app.querySelector('.ph,.top'); if (hdr) $app.style.setProperty('--hh', hdr.offsetHeight + 'px');
     if (quick) {
@@ -576,7 +583,7 @@
   }
 
   function dataDlg() {
-    var d = ddlg, where = Store.mode === 'cloud' ? 'Your planner is saved to your Claude account and syncs live between your devices.' : 'Your planner is saved in this browser on this device.';
+    var d = ddlg, where = Store.mode === 'cloud' ? 'Your planner is saved to your account and syncs live between your devices.' : 'Your planner is saved in this browser on this device.';
     var pend = d.pending ? '<div class="conf"><span>Replace the current planner with the file (' + d.pending.blocks.length + ' blocks, ' + d.pending.habits.length + ' habits)?</span><span style="display:flex;gap:8px"><button class="btn sm" data-a="import-cancel">Cancel</button><button class="btn sm danger" data-a="import-ok">Replace</button></span></div>' : '';
     var rst = d.reset ? '<div class="conf"><span>Delete every block and all history?</span><span style="display:flex;gap:8px"><button class="btn sm" data-a="reset-cancel">Cancel</button><button class="btn sm danger" data-a="reset-ok">Delete everything</button></span></div>' : '';
     return '<div class="scrim"><div class="dlg" role="dialog" aria-modal="true" aria-labelledby="dt"><div class="grab"></div><div class="dh"><h2 id="dt">Data</h2><button class="ib" data-a="data-close" aria-label="Close">' + ic('x', 16) + '</button></div>' +
@@ -585,6 +592,7 @@
       '<div class="drow"><span><b>Export</b><div class="note">Download a backup file of everything.</div></span><button class="btn" data-a="export">Export</button></div>' +
       '<div class="drow"><span><b>Import</b><div class="note">Load a backup file. This replaces what is here.</div></span><button class="btn" data-a="import-pick">Choose file</button><input type="file" id="imp" accept=".json,application/json" class="sr" tabindex="-1" aria-hidden="true"></div>' + pend +
       '<div class="drow"><span><b>Start over</b><div class="note">Delete all blocks and history.</div></span><button class="btn danger" data-a="reset">Reset</button></div>' + rst +
+      (window.plannerCloud && Store.mode === 'cloud' ? '<div class="drow"><span><b>Sign out</b><div class="note">Your planner stays saved to your account.</div></span><button class="btn" data-a="signout">Sign out</button></div>' : '') +
       (d.msg ? '<div class="note" role="status" style="margin-top:8px">' + esc(d.msg) + '</div>' : '') +
       '<div class="df"><span></span><button class="btn pri" data-a="data-close">Done</button></div></div></div>';
   }
@@ -739,6 +747,16 @@
     'import-ok': function () { S = ddlg.pending; ddlg.pending = null; ddlg.msg = 'Imported.'; Store.schedule(); renderDlg(); },
     reset: function () { ddlg.reset = true; renderDlg(); },
     'reset-cancel': function () { ddlg.reset = false; renderDlg(); },
+    signin: function (el) {
+      el.disabled = true;
+      window.plannerCloud.signIn().then(function () { location.reload(); }, function (e) {
+        el.disabled = false;
+        if (e && e.code !== 'auth/popup-closed-by-user' && e.code !== 'auth/cancelled-popup-request') alert('Sign-in failed: ' + (e.message || e.code));
+      });
+    },
+    signout: function () {   // finish the last save first: after sign-out the rules refuse writes
+      Store.flushNow().then(function () { return window.plannerCloud.signOut(); }).then(function () { location.reload(); });
+    },
     'reset-ok': function () { S = L.newState(); ddlg.reset = false; ddlg.msg = 'Everything was cleared.'; Store.schedule(); renderDlg(); }
   };
 

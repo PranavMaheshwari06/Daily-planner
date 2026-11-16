@@ -5,7 +5,7 @@ One personal planner that works on phone and laptop: hourly day view, weekly rep
 dark Apple-style look, live sync between devices. No server to run, no cost.
 
 ## Decisions (confirmed with the owner)
-- Hosting: private Claude artifact. Data is stored per user in the artifact `db` capability, so it is private to the
+- Hosting (superseded by v4: GitHub Pages + Firebase, see `docs/PLAN-v4.md`): private Claude artifact. Data is stored per user in the artifact `db` capability, so it is private to the
   owner's claude.ai account. Must be opened in a browser signed in to claude.ai (not WhatsApp's in-app browser).
 - Same code also builds to a standalone `dist/planner.html` (localStorage only) for offline use.
 - Look: true black, graphite cards, iOS blue accent. Phone first, desktop gets a sidebar. Templates live in `design/`

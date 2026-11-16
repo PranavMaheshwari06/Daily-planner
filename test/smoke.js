@@ -26,6 +26,7 @@ function boot(opts) {
       w.scrollTo = (x, y) => { (w.__scrolls = w.__scrolls || []).push(y); };
       if (opts.width) Object.defineProperty(w, 'innerWidth', { value: opts.width, configurable: true });
       if (opts.claude) w.claude = opts.claude;
+      if (opts.cloud) w.plannerCloud = opts.cloud;
     } });
 }
 const $ = (w, s) => w.document.querySelector(s), $$ = (w, s) => [...w.document.querySelectorAll(s)];
@@ -776,6 +777,24 @@ const cloudFor = (store, uid) => ({ use: async n => n === 'db' ? mkDb(store) : n
     // swipe left on the week moves to the next week
     const tch = (type, x, y) => { const e = new p.Event(type, { bubbles: true }); e.touches = [{ clientX: x, clientY: y }]; e.changedTouches = [{ clientX: x, clientY: y }]; $(p, '.pmain').dispatchEvent(e); };
     tch('touchstart', 300, 300); tch('touchend', 150, 305); assert.match($(p, '.ph .mbtn').textContent, /16 – 22 Nov 2026/);
+    d.window.close();
+  });
+
+  await t('own backend (plannerCloud) is used ahead of the Claude runtime', async () => {
+    const mine = fixtureStore('o1'), theirs = {};
+    const d = boot({ cloud: cloudFor(mine, 'o1'), claude: cloudFor(theirs, 'x') }); await wait(150); const w = d.window;
+    assert.ok($$(w, '.tile').length > 0 && !$(w, '.banner'));
+    assert.strictEqual(Object.keys(theirs).length, 0);
+    click(w, $(w, '[data-a="data-open"]')); assert.ok($(w, '[data-a="signout"]'));
+    d.window.close();
+  });
+
+  await t('own backend, signed out: only the sign-in card, nothing saved', async () => {
+    const st = {}, signedOut = { use: async n => n === 'db' ? mkDb(st) : { id: async () => null }, signIn: async () => {} };
+    const d = boot({ cloud: signedOut }); await wait(150); const w = d.window;
+    assert.ok($(w, '[data-a="signin"]') && !$(w, '.tile') && !$(w, '.grid') && !$(w, '.banner'));
+    await wait(700); assert.strictEqual(Object.keys(st).length, 0);
+    assert.strictEqual(w.localStorage.getItem('planner.v1'), null);
     d.window.close();
   });
 
